@@ -1,0 +1,1122 @@
+from __future__ import annotations
+
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox, ttk
+
+import Super
+import super_batch
+import super_dxf
+import super_exports
+import super_landxml
+import super_pdf
+import super_project
+from super_lane import build_lane_rows, lane_profile_points, slope_at_station, station_for_slope
+
+
+DARK_BG = "#151719"
+DARK_PANEL = "#202327"
+DARK_PANEL_ALT = "#25292e"
+DARK_FIELD = "#101214"
+DARK_BORDER = "#3b4148"
+DARK_TEXT = "#edf1f5"
+DARK_MUTED = "#aeb7c2"
+DARK_ACCENT = "#8ab4f8"
+DARK_SELECT = "#2f5f9f"
+
+
+class ModernSuperElevationUI(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title("Superelevation Calculator")
+        self.minsize(1180, 720)
+        self.geometry("1280x780")
+        self.last_results: dict | None = None
+        self.last_meta: dict = {}
+        self.curves: list[dict] = []
+        self.project_path: str | None = None
+        self._auto_job: str | None = None
+        self._suspend_auto = False
+        self._landxml_data: super_landxml.LandXMLData | None = None
+        self._landxml_curve_presets: list[dict] = []
+
+        self.vars = {
+            "project_name": tk.StringVar(),
+            "route_name": tk.StringVar(),
+            "alignment_name": tk.StringVar(),
+            "curve_name": tk.StringVar(),
+            "curve_direction": tk.StringVar(value="left"),
+            "landxml_path": tk.StringVar(),
+            "landxml_curve": tk.StringVar(),
+            "station_equations": tk.StringVar(),
+            "alignment_station_range": tk.StringVar(),
+            "pc": tk.StringVar(),
+            "pt": tk.StringVar(),
+            "speed": tk.StringVar(),
+            "radius": tk.StringVar(),
+            "facility": tk.StringVar(value="centerline"),
+            "area": tk.StringVar(value="rural"),
+            "lane_width": tk.StringVar(value="12"),
+            "lanes_rotated": tk.StringVar(value="2"),
+            "e_manual": tk.StringVar(),
+            "friction": tk.StringVar(),
+            "rel_grad": tk.StringVar(),
+            "normal_crown": tk.StringVar(value="0.02"),
+            "Lr_manual": tk.StringVar(),
+            "Lt_manual": tk.StringVar(),
+            "lookup_station": tk.StringVar(),
+            "lookup_super": tk.StringVar(),
+            "station_format": tk.BooleanVar(value=True),
+            "auto_open_pdf": tk.BooleanVar(value=True),
+            "curve_notes": tk.StringVar(),
+        }
+        self.computed_vars = {
+            "e": tk.StringVar(value="auto"),
+            "Lr": tk.StringVar(value="auto"),
+            "Lt": tk.StringVar(value="auto"),
+            "rel_grad": tk.StringVar(value="auto"),
+            "friction": tk.StringVar(value="auto"),
+            "normal_crown": tk.StringVar(value="0.0200"),
+        }
+
+        self._configure_style()
+        self._build_layout()
+        self._setup_auto_handlers()
+        self._update_overlay_button()
+        self.after_idle(self._maximize_window)
+
+    def _maximize_window(self) -> None:
+        """Open maximized so all controls remain available on launch."""
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            try:
+                self.attributes("-zoomed", True)
+            except tk.TclError:
+                pass
+
+    def _configure_style(self) -> None:
+        self.configure(background=DARK_BG)
+        self.option_add("*Font", ("Segoe UI", 9))
+        self.option_add("*Entry.Background", DARK_FIELD)
+        self.option_add("*Entry.Foreground", DARK_TEXT)
+        self.option_add("*Entry.InsertBackground", DARK_TEXT)
+        self.option_add("*Listbox.Background", DARK_FIELD)
+        self.option_add("*Listbox.Foreground", DARK_TEXT)
+        self.option_add("*Listbox.SelectBackground", DARK_SELECT)
+        self.option_add("*Listbox.SelectForeground", DARK_TEXT)
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure(".", background=DARK_BG, foreground=DARK_TEXT, fieldbackground=DARK_FIELD)
+        style.configure("TFrame", background=DARK_BG)
+        style.configure("Panel.TFrame", background=DARK_PANEL)
+        style.configure("TLabel", background=DARK_BG, foreground=DARK_TEXT)
+        style.configure("Panel.TLabel", background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure("Muted.Panel.TLabel", background=DARK_PANEL, foreground=DARK_MUTED)
+        style.configure("Header.TLabel", font=("Segoe UI", 12, "bold"), background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure("Value.TLabel", font=("Segoe UI", 11, "bold"), background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure(
+            "TEntry",
+            fieldbackground=DARK_FIELD,
+            foreground=DARK_TEXT,
+            insertcolor=DARK_TEXT,
+            bordercolor=DARK_BORDER,
+            lightcolor=DARK_BORDER,
+            darkcolor=DARK_BORDER,
+            padding=(4, 3),
+        )
+        style.map(
+            "TEntry",
+            fieldbackground=[("disabled", DARK_PANEL_ALT), ("readonly", DARK_FIELD), ("focus", DARK_FIELD)],
+            foreground=[("disabled", DARK_MUTED), ("readonly", DARK_TEXT)],
+            bordercolor=[("focus", DARK_ACCENT)],
+        )
+        style.configure(
+            "TCombobox",
+            fieldbackground=DARK_FIELD,
+            background=DARK_PANEL_ALT,
+            foreground=DARK_TEXT,
+            arrowcolor=DARK_TEXT,
+            bordercolor=DARK_BORDER,
+            lightcolor=DARK_BORDER,
+            darkcolor=DARK_BORDER,
+            padding=(4, 3),
+        )
+        style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", DARK_FIELD)],
+            foreground=[("readonly", DARK_TEXT)],
+            selectbackground=[("readonly", DARK_FIELD)],
+            selectforeground=[("readonly", DARK_TEXT)],
+            bordercolor=[("focus", DARK_ACCENT)],
+        )
+        style.configure(
+            "TButton",
+            padding=(10, 5),
+            background="#2b3036",
+            foreground=DARK_TEXT,
+            bordercolor=DARK_BORDER,
+            lightcolor=DARK_BORDER,
+            darkcolor=DARK_BORDER,
+            focusthickness=1,
+            focuscolor=DARK_ACCENT,
+        )
+        style.map(
+            "TButton",
+            background=[("active", "#39414a"), ("pressed", "#1f5f99")],
+            foreground=[("disabled", DARK_MUTED)],
+        )
+        style.configure("Primary.TButton", padding=(12, 6), background="#245d8f", foreground="#ffffff")
+        style.map("Primary.TButton", background=[("active", "#2d74ad"), ("pressed", "#1f527e")])
+        style.configure("TCheckbutton", background=DARK_PANEL, foreground=DARK_TEXT, indicatorbackground=DARK_FIELD)
+        style.map(
+            "TCheckbutton",
+            background=[("active", DARK_PANEL)],
+            foreground=[("disabled", DARK_MUTED)],
+            indicatorbackground=[("selected", DARK_ACCENT), ("!selected", DARK_FIELD)],
+        )
+        style.configure("Vertical.TScrollbar", background=DARK_PANEL_ALT, troughcolor=DARK_FIELD, bordercolor=DARK_BORDER)
+
+    def _build_layout(self) -> None:
+        root = ttk.Frame(self, padding=10)
+        root.grid(row=0, column=0, sticky="nsew")
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
+        root.columnconfigure(0, weight=0)
+        root.columnconfigure(1, weight=1)
+        root.columnconfigure(2, weight=1)
+        root.rowconfigure(0, weight=1)
+
+        self._build_project_panel(root)
+        self._build_input_panel(root)
+        self._build_results_panel(root)
+
+    def _build_project_panel(self, parent: ttk.Frame) -> None:
+        panel = ttk.Frame(parent, style="Panel.TFrame", padding=10)
+        panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        panel.rowconfigure(3, weight=1)
+
+        ttk.Label(panel, text="Project", style="Header.TLabel").grid(row=0, column=0, sticky="w")
+        buttons = ttk.Frame(panel, style="Panel.TFrame")
+        buttons.grid(row=1, column=0, sticky="ew", pady=(8, 10))
+        for idx, (label, command) in enumerate(
+            [
+                ("New", self._new_project),
+                ("Load", self._load_project),
+                ("Save", self._save_project),
+            ]
+        ):
+            ttk.Button(buttons, text=label, command=command).grid(row=0, column=idx, padx=(0, 6))
+
+        meta = ttk.Frame(panel, style="Panel.TFrame")
+        meta.grid(row=2, column=0, sticky="ew")
+        ttk.Label(meta, text="Project name", style="Panel.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ttk.Entry(meta, textvariable=self.vars["project_name"], width=30).grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        ttk.Label(meta, text="Route name", style="Panel.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 4))
+        ttk.Entry(meta, textvariable=self.vars["route_name"], width=30).grid(row=3, column=0, sticky="ew", pady=(0, 8))
+        ttk.Button(meta, text="Select LandXML", command=self._select_landxml).grid(row=4, column=0, sticky="ew", pady=(0, 4))
+        ttk.Button(meta, text="Add All LandXML Curves", command=self._add_all_landxml_curves).grid(
+            row=5, column=0, sticky="ew", pady=(0, 4)
+        )
+        self.landxml_status = tk.StringVar(value="LandXML: none")
+        ttk.Label(meta, textvariable=self.landxml_status, style="Muted.Panel.TLabel", wraplength=240, justify="left").grid(
+            row=6, column=0, sticky="w", pady=(0, 8)
+        )
+        meta.columnconfigure(0, weight=1)
+
+        self.curve_listbox = tk.Listbox(
+            panel,
+            width=38,
+            height=18,
+            activestyle="dotbox",
+            background=DARK_FIELD,
+            foreground=DARK_TEXT,
+            selectbackground=DARK_SELECT,
+            selectforeground=DARK_TEXT,
+            highlightbackground=DARK_BORDER,
+            highlightcolor=DARK_ACCENT,
+            relief="flat",
+            borderwidth=6,
+        )
+        self.curve_listbox.grid(row=3, column=0, sticky="nsew")
+        self.curve_listbox.bind("<<ListboxSelect>>", self._load_selected_curve)
+
+        curve_buttons = ttk.Frame(panel, style="Panel.TFrame")
+        curve_buttons.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        ttk.Button(curve_buttons, text="Add Curve", command=self._add_curve).grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        ttk.Button(curve_buttons, text="Update Selected", command=self._update_selected_curve).grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        ttk.Button(curve_buttons, text="Remove Selected", command=self._remove_curve).grid(row=2, column=0, sticky="ew")
+        curve_buttons.columnconfigure(0, weight=1)
+
+        ttk.Checkbutton(
+            panel,
+            text="Auto-open PDF",
+            variable=self.vars["auto_open_pdf"],
+            style="TCheckbutton",
+        ).grid(row=5, column=0, sticky="w", pady=(12, 0))
+        ttk.Button(panel, text="Export PDF", command=self._export_pdf, style="Primary.TButton").grid(
+            row=6, column=0, sticky="ew", pady=(8, 0)
+        )
+        ttk.Button(panel, text="Export ORD CSV", command=self._export_ord_csv).grid(row=7, column=0, sticky="ew", pady=(8, 0))
+        self.overlay_button = ttk.Button(panel, text="Export Overlay DXF", command=self._export_overlay_dxf)
+        self.overlay_button.grid(row=8, column=0, sticky="ew", pady=(8, 0))
+        self.overlay_status = tk.StringVar(value="DXF: select LandXML and calculate a curve")
+        ttk.Label(panel, textvariable=self.overlay_status, style="Muted.Panel.TLabel", wraplength=240, justify="left").grid(
+            row=9, column=0, sticky="w", pady=(4, 0)
+        )
+        ttk.Button(panel, text="Show DXF Issues", command=self._show_overlay_issues).grid(
+            row=10, column=0, sticky="ew", pady=(4, 0)
+        )
+
+    def _build_input_panel(self, parent: ttk.Frame) -> None:
+        shell = ttk.Frame(parent, style="Panel.TFrame", padding=10)
+        shell.grid(row=0, column=1, sticky="nsew", padx=(0, 10))
+        shell.columnconfigure(0, weight=1)
+        shell.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(shell, highlightthickness=0, background=DARK_PANEL)
+        scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        body = ttk.Frame(canvas, style="Panel.TFrame")
+        window = canvas.create_window((0, 0), window=body, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
+        body.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+
+        row = 0
+        row = self._section(body, row, "Curve")
+        row = self._combo(body, row, "LandXML curve", "landxml_curve", [])
+        row = self._field(body, row, "Alignment name", "alignment_name")
+        row = self._field(body, row, "Curve name", "curve_name")
+        row = self._combo(body, row, "Curve direction", "curve_direction", ["left", "right"])
+        row = self._field(body, row, "PC station *", "pc")
+        row = self._field(body, row, "PT station", "pt")
+        row = self._field(body, row, "Manual station equations (Back=Ahead)", "station_equations")
+        row = self._field(body, row, "Manual internal alignment range (start,end)", "alignment_station_range")
+        row = self._combo(body, row, "Design speed (mph) *", "speed", [str(v) for v in range(15, 85, 5)])
+        row = self._field(body, row, "Curve radius (ft) *", "radius")
+
+        row = self._section(body, row, "Roadway")
+        row = self._combo(body, row, "Facility / rotation", "facility", ["centerline", "outside edge"])
+        row = self._combo(body, row, "Area type", "area", ["rural", "urban", "local"])
+        row = self._field(body, row, "Lane width (ft)", "lane_width")
+        row = self._field(body, row, "Lanes rotated", "lanes_rotated")
+
+        row = self._section(body, row, "Overrides")
+        row = self._override_field(body, row, "e (ft/ft)", "e_manual", "e")
+        row = self._override_field(body, row, "Runoff Lr (ft)", "Lr_manual", "Lr")
+        row = self._override_field(body, row, "Runout Lt (ft)", "Lt_manual", "Lt")
+        row = self._override_field(body, row, "Relative gradient", "rel_grad", "rel_grad")
+        row = self._override_field(body, row, "Side friction", "friction", "friction")
+        row = self._override_field(body, row, "Normal crown", "normal_crown", "normal_crown")
+        row = self._field(body, row, "Curve notes", "curve_notes")
+
+        actions = ttk.Frame(body, style="Panel.TFrame")
+        actions.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(12, 4))
+        ttk.Button(actions, text="Compute", command=self._compute, style="Primary.TButton").grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(actions, text="Clear", command=self._clear).grid(row=0, column=1, padx=(0, 8))
+        ttk.Checkbutton(actions, text="Station format", variable=self.vars["station_format"]).grid(row=0, column=2)
+        body.columnconfigure(0, weight=0, minsize=124)
+        body.columnconfigure(1, weight=0, minsize=168)
+        body.columnconfigure(2, weight=1, minsize=170)
+
+    def _build_results_panel(self, parent: ttk.Frame) -> None:
+        panel = ttk.Frame(parent, style="Panel.TFrame", padding=10)
+        panel.grid(row=0, column=2, sticky="nsew")
+        panel.columnconfigure(0, weight=1)
+        panel.rowconfigure(2, weight=1)
+        panel.rowconfigure(4, weight=1)
+
+        ttk.Label(panel, text="Results", style="Header.TLabel").grid(row=0, column=0, sticky="w")
+        self.summary = ttk.Frame(panel, style="Panel.TFrame")
+        self.summary.grid(row=1, column=0, sticky="ew", pady=(8, 8))
+        for idx, label in enumerate(["e", "Lr", "Lt"]):
+            ttk.Label(self.summary, text=label, style="Panel.TLabel").grid(row=0, column=idx, sticky="w", padx=(0, 18))
+            ttk.Label(self.summary, textvariable=self.computed_vars[label], style="Value.TLabel").grid(
+                row=1, column=idx, sticky="w", padx=(0, 18)
+            )
+
+        self.output = tk.Text(
+            panel,
+            wrap="word",
+            height=18,
+            font=("Segoe UI", 10),
+            state="disabled",
+            background=DARK_FIELD,
+            foreground=DARK_TEXT,
+            insertbackground=DARK_TEXT,
+            selectbackground=DARK_SELECT,
+            selectforeground=DARK_TEXT,
+            relief="flat",
+            borderwidth=8,
+        )
+        self.output.grid(row=2, column=0, sticky="nsew")
+
+        lookup = ttk.Frame(panel, style="Panel.TFrame")
+        lookup.grid(row=3, column=0, sticky="ew", pady=(10, 6))
+        ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=14).grid(row=0, column=1, padx=(6, 10))
+        ttk.Label(lookup, text="Super", style="Panel.TLabel").grid(row=0, column=2, sticky="w")
+        ttk.Entry(lookup, textvariable=self.vars["lookup_super"], width=10).grid(row=0, column=3, padx=(6, 10))
+        ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=4)
+
+        self.table = tk.Text(
+            panel,
+            wrap="none",
+            height=13,
+            font=("Consolas", 9),
+            state="disabled",
+            background=DARK_FIELD,
+            foreground=DARK_TEXT,
+            insertbackground=DARK_TEXT,
+            selectbackground=DARK_SELECT,
+            selectforeground=DARK_TEXT,
+            relief="flat",
+            borderwidth=8,
+        )
+        self.table.grid(row=4, column=0, sticky="nsew")
+
+    def _section(self, parent: ttk.Frame, row: int, title: str) -> int:
+        ttk.Label(parent, text=title, style="Header.TLabel").grid(row=row, column=0, columnspan=3, sticky="w", pady=(10, 4))
+        return row + 1
+
+    def _field(self, parent: ttk.Frame, row: int, label: str, key: str) -> int:
+        ttk.Label(parent, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=3)
+        ttk.Entry(parent, textvariable=self.vars[key], width=22).grid(row=row, column=1, sticky="w", pady=3)
+        return row + 1
+
+    def _combo(self, parent: ttk.Frame, row: int, label: str, key: str, values: list[str]) -> int:
+        ttk.Label(parent, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=3)
+        combo = ttk.Combobox(parent, textvariable=self.vars[key], values=values, state="readonly", width=20)
+        combo.grid(row=row, column=1, sticky="w", pady=3)
+        if key == "landxml_curve":
+            self.landxml_curve_combo = combo
+            combo.configure(state="disabled")
+        return row + 1
+
+    def _override_field(self, parent: ttk.Frame, row: int, label: str, key: str, computed_key: str) -> int:
+        ttk.Label(parent, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=3)
+        ttk.Entry(parent, textvariable=self.vars[key], width=16).grid(row=row, column=1, sticky="w", pady=3)
+        ttk.Label(parent, textvariable=self.computed_vars[computed_key], style="Muted.Panel.TLabel").grid(
+            row=row, column=2, sticky="w", padx=(8, 0)
+        )
+        return row + 1
+
+    def _setup_auto_handlers(self) -> None:
+        for key, var in self.vars.items():
+            if key in {"lookup_station", "lookup_super", "auto_open_pdf"}:
+                continue
+            var.trace_add("write", self._on_input_change)
+        self.vars["landxml_curve"].trace_add("write", self._on_landxml_curve_change)
+
+    def _on_input_change(self, *_: object) -> None:
+        if self._suspend_auto:
+            return
+        if self._auto_job:
+            self.after_cancel(self._auto_job)
+        self._auto_job = self.after(350, self._auto_compute)
+
+    def _required_fields_present(self) -> bool:
+        return all(self.vars[key].get().strip() for key in ("pc", "speed", "radius"))
+
+    def _auto_compute(self) -> None:
+        self._auto_job = None
+        if self._required_fields_present():
+            self._compute(show_errors=False)
+
+    def _calculate(self, include_overrides: bool = True) -> dict:
+        e_manual = self.vars["e_manual"].get() if include_overrides else ""
+        Lr_manual = self.vars["Lr_manual"].get() if include_overrides else ""
+        Lt_manual = self.vars["Lt_manual"].get() if include_overrides else ""
+        rel_grad = self.vars["rel_grad"].get() if include_overrides else ""
+        friction = self.vars["friction"].get() if include_overrides else ""
+        normal_crown = self.vars["normal_crown"].get()
+        if self.vars["area"].get().strip().lower().startswith("local"):
+            self.vars["facility"].set("centerline")
+        return Super.calculate_superelevation(
+            self.vars["pc"].get(),
+            self.vars["pt"].get(),
+            self.vars["speed"].get(),
+            self.vars["radius"].get(),
+            self.vars["facility"].get(),
+            self.vars["area"].get(),
+            self.vars["lane_width"].get(),
+            self.vars["lanes_rotated"].get(),
+            e_manual,
+            friction,
+            rel_grad,
+            normal_crown,
+            Lr_manual,
+            Lt_manual,
+            self._station_equations(),
+            self._alignment_station_range(),
+        )
+
+    def _station_equations(self) -> list[dict]:
+        if self._landxml_data and self._landxml_data.station_equations:
+            return self._landxml_data.station_equations
+        equations: list[dict] = []
+        for entry in self.vars["station_equations"].get().split(";"):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if "=" not in entry:
+                raise ValueError("Manual station equations must use Back=Ahead format, for example 1543+52.403=1233+15.920.")
+            back, ahead = (part.strip() for part in entry.split("=", 1))
+            equations.append({"staBack": str(Super.parse_station(back)), "staAhead": str(Super.parse_station(ahead))})
+        return equations
+
+    def _alignment_station_range(self) -> tuple[float, float] | None:
+        if self._landxml_data:
+            return self._landxml_data.station_range()
+        value = self.vars["alignment_station_range"].get().strip()
+        if not value:
+            return None
+        if "," not in value:
+            raise ValueError("Manual internal alignment range must use Start,End format, for example 1417+36,1570+52.")
+        start_text, end_text = (part.strip() for part in value.split(",", 1))
+        start = Super.parse_station(start_text)
+        end = Super.parse_station(end_text)
+        if end < start:
+            raise ValueError("Manual internal alignment range end must be greater than its start.")
+        return start, end
+
+    def _compute(self, show_errors: bool = True) -> None:
+        try:
+            results = self._calculate(include_overrides=True)
+            try:
+                baseline = self._calculate(include_overrides=False)
+            except ValueError:
+                baseline = results
+        except ValueError as exc:
+            if show_errors:
+                messagebox.showerror("Input Error", str(exc))
+            return
+        self.last_results = results
+        self.last_meta = self._current_meta()
+        self._update_computed_values(results, baseline)
+        self._render_results(results)
+        self._update_overlay_button()
+
+    def _update_computed_values(self, results: dict, baseline: dict) -> None:
+        def override_label(key: str, value: str) -> str:
+            return "override" if self.vars[key].get().strip() else value
+
+        self.computed_vars["e"].set(f"{results.get('e', 0):.4f} ({override_label('e_manual', baseline.get('e_source', 'auto'))})")
+        self.computed_vars["Lr"].set(f"{results.get('Lr', 0):.2f} ft ({'override' if self.vars['Lr_manual'].get().strip() else 'auto'})")
+        self.computed_vars["Lt"].set(f"{results.get('Lt', 0):.2f} ft ({'override' if self.vars['Lt_manual'].get().strip() else 'auto'})")
+        self.computed_vars["rel_grad"].set(f"{results.get('relative_gradient', 0):.4f}")
+        friction = results.get("friction")
+        self.computed_vars["friction"].set("n/a" if friction is None else f"{friction:.4f}")
+        self.computed_vars["normal_crown"].set(f"{results.get('inputs', {}).get('normal_crown', 0.02):.4f}")
+
+    def _render_results(self, results: dict, lookup_lines: list[str] | None = None) -> None:
+        station_format = self.vars["station_format"].get()
+        lines = Super.format_results(results, station_format)
+        meta = self._current_meta()
+        lines.insert(0, f"Route: {meta.get('route_name', 'n/a')}")
+        lines.insert(0, f"Project: {meta.get('project_name', 'n/a')}")
+        lines.insert(0, f"Curve direction: {meta.get('curve_direction', 'left')}")
+        lines.insert(0, f"Curve name: {meta.get('curve_name', 'n/a')}")
+        lines.insert(0, f"Alignment: {meta.get('alignment_name', 'n/a')}")
+        if self._landxml_data:
+            lines.append("")
+            lines.append(
+                f"LandXML: {self._landxml_data.alignment_name or 'Unnamed'} | start {Super.format_station(self._landxml_data.start_station, True)} | unit {self._landxml_data.linear_unit or 'unknown'}"
+            )
+        if self.vars["curve_notes"].get().strip():
+            lines.append("")
+            lines.append(f"Curve notes: {self.vars['curve_notes'].get().strip()}")
+        if lookup_lines:
+            lines.extend([""] + lookup_lines)
+        self._write_text(self.output, "\n".join(lines))
+
+        left_rows, right_rows = build_lane_rows(results, meta.get("curve_direction", "left"), station_format)
+        table_lines = self._format_lane_table("Left Lane", left_rows) + [""] + self._format_lane_table("Right Lane", right_rows)
+        self._write_text(self.table, "\n".join(table_lines))
+
+    def _format_lane_table(self, title: str, rows: list[dict]) -> list[str]:
+        lines = [title, f"{'Point':<14}{'Station':<16}{'Slope (%)':>10}  Note", "-" * 68]
+        for row in rows:
+            lines.append(f"{row['label']:<14}{row['station']:<16}{row['slope']:>10}  {row['note']}")
+        return lines
+
+    def _write_text(self, widget: tk.Text, value: str) -> None:
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("1.0", value)
+        widget.configure(state="disabled")
+
+    def _compute_lookup(self) -> None:
+        if not self.last_results:
+            messagebox.showinfo("Lookup", "Run a calculation first.")
+            return
+        station_text = self.vars["lookup_station"].get().strip()
+        super_text = self.vars["lookup_super"].get().strip()
+        if not station_text and not super_text:
+            messagebox.showinfo("Lookup", "Enter a station, a super value, or both.")
+            return
+        points = lane_profile_points(self.last_results, self.vars["curve_direction"].get())
+        lookup_lines = ["--- Lookup ---"]
+        reference = float(self.last_results.get("reverse_crown_ft", 0.0))
+        if station_text:
+            try:
+                station = Super.civil_to_internal_station(Super.parse_station(station_text), self.last_results.get("station_equations"))
+            except ValueError:
+                messagebox.showerror("Lookup", "Invalid lookup station.")
+                return
+            reference = station
+            lookup_lines.append(f"Lookup station: {Super.format_result_station(self.last_results, station, True)}")
+            for lane in ("left", "right"):
+                slope = slope_at_station(points[lane], station)
+                lookup_lines.append(
+                    f"{lane.title()} lane super: {super_exports.format_slope_label(slope)} ({super_exports.slope_decimal(slope)} ft/ft)"
+                )
+        if super_text:
+            try:
+                raw = float(super_text)
+            except ValueError:
+                messagebox.showerror("Lookup", "Invalid lookup super value.")
+                return
+            target = raw if abs(raw) > 1.0 else raw * 100.0
+            lookup_lines.append(
+                f"Lookup super: {super_exports.format_slope_label(target)} ({super_exports.slope_decimal(target)} ft/ft)"
+            )
+            for lane in ("left", "right"):
+                station = station_for_slope(points[lane], target, reference)
+                lookup_lines.append(
+                    f"{lane.title()} lane station: {Super.format_result_station(self.last_results, station, True) if station is not None else 'n/a'}"
+                )
+        self._render_results(self.last_results, lookup_lines)
+
+    def _current_meta(self) -> dict:
+        return {
+            "project_name": self.vars["project_name"].get().strip() or "Unnamed project",
+            "route_name": self.vars["route_name"].get().strip() or "Unnamed route",
+            "alignment_name": self.vars["alignment_name"].get().strip() or "Unnamed alignment",
+            "curve_name": self.vars["curve_name"].get().strip() or "Unnamed curve",
+            "curve_direction": self.vars["curve_direction"].get().strip() or "left",
+        }
+
+    def _shared_curve_inputs(self) -> dict[str, str]:
+        return {
+            "project_name": self.vars["project_name"].get().strip(),
+            "route_name": self.vars["route_name"].get().strip(),
+            "speed": self.vars["speed"].get().strip(),
+            "facility": self.vars["facility"].get().strip(),
+            "area": self.vars["area"].get().strip(),
+            "lane_width": self.vars["lane_width"].get().strip(),
+            "lanes_rotated": self.vars["lanes_rotated"].get().strip(),
+            "e_manual": self.vars["e_manual"].get().strip(),
+            "friction": self.vars["friction"].get().strip(),
+            "rel_grad": self.vars["rel_grad"].get().strip(),
+            "normal_crown": self.vars["normal_crown"].get().strip(),
+            "Lr_manual": self.vars["Lr_manual"].get().strip(),
+            "Lt_manual": self.vars["Lt_manual"].get().strip(),
+            "curve_notes": self.vars["curve_notes"].get().strip(),
+        }
+
+    def _collect_vars(self) -> dict:
+        data: dict[str, object] = {}
+        for key, var in self.vars.items():
+            data[key] = bool(var.get()) if isinstance(var, tk.BooleanVar) else var.get()
+        return data
+
+    def _new_project(self) -> None:
+        self._suspend_auto = True
+        self.curves = []
+        self.project_path = None
+        self.curve_listbox.delete(0, "end")
+        self._clear()
+        self._suspend_auto = False
+
+    def _clear(self) -> None:
+        self._suspend_auto = True
+        for key, var in self.vars.items():
+            if isinstance(var, tk.BooleanVar):
+                var.set(True)
+            else:
+                var.set("")
+        self.vars["curve_direction"].set("left")
+        self.vars["facility"].set("centerline")
+        self.vars["area"].set("rural")
+        self.vars["lane_width"].set("12")
+        self.vars["lanes_rotated"].set("2")
+        self.vars["normal_crown"].set("0.02")
+        self.vars["landxml_curve"].set("")
+        self.last_results = None
+        self.last_meta = {}
+        for var in self.computed_vars.values():
+            var.set("auto")
+        self._write_text(self.output, "")
+        self._write_text(self.table, "")
+        self._landxml_data = None
+        self._landxml_curve_presets = []
+        self.landxml_status.set("LandXML: none")
+        self._refresh_landxml_curve_picker()
+        self._update_overlay_button()
+        self._suspend_auto = False
+
+    def _project_payload(self) -> dict:
+        return {
+            "version": super_project.PROJECT_VERSION,
+            "vars": self._collect_vars(),
+            "curves": self.curves,
+            "last_results": self.last_results,
+            "last_meta": self.last_meta,
+        }
+
+    def _save_project(self) -> None:
+        path = self.project_path
+        if not path:
+            path = filedialog.asksaveasfilename(
+                defaultextension=".json",
+                filetypes=[("Project files", "*.json")],
+                title="Save Project",
+            )
+        if not path:
+            return
+        try:
+            super_project.save_project(path, self._project_payload())
+        except OSError as exc:
+            messagebox.showerror("Save Project", f"Failed to save project:\n{exc}")
+            return
+        self.project_path = path
+        messagebox.showinfo("Save Project", f"Saved project to:\n{os.path.basename(path)}")
+
+    def _load_project(self) -> None:
+        path = filedialog.askopenfilename(filetypes=[("Project files", "*.json")], title="Load Project")
+        if not path:
+            return
+        try:
+            data = super_project.load_project(path)
+        except Exception as exc:
+            messagebox.showerror("Load Project", f"Failed to load project:\n{exc}")
+            return
+        self._apply_project(data)
+        self.project_path = path
+        messagebox.showinfo("Load Project", f"Loaded project from:\n{os.path.basename(path)}")
+
+    def _apply_project(self, data: dict) -> None:
+        self._suspend_auto = True
+        vars_data = data.get("vars", {}) or {}
+        for key, var in self.vars.items():
+            if key not in vars_data:
+                continue
+            value = vars_data[key]
+            if isinstance(var, tk.BooleanVar):
+                var.set(bool(value))
+            elif value is None:
+                var.set("")
+            elif isinstance(value, (int, float)) and float(value).is_integer():
+                var.set(str(int(value)))
+            else:
+                var.set(str(value))
+        self.curves = data.get("curves", []) or []
+        self.curve_listbox.delete(0, "end")
+        for curve in self.curves:
+            self.curve_listbox.insert("end", super_project.curve_label(curve.get("meta", {}), curve.get("results")))
+        self.last_results = data.get("last_results")
+        self.last_meta = data.get("last_meta", {}) or {}
+        self._landxml_data = None
+        self._landxml_curve_presets = []
+        self._load_landxml_data(show_errors=False, autofill=False)
+        if self.last_results:
+            self._render_results(self.last_results)
+        else:
+            self._write_text(self.output, "")
+            self._write_text(self.table, "")
+        self._suspend_auto = False
+        self._update_overlay_button()
+
+    def _add_curve(self) -> None:
+        if not self.last_results:
+            messagebox.showinfo("Add Curve", "Run a calculation first.")
+            return
+        curve = {
+            "results": self.last_results,
+            "meta": self._current_meta(),
+            "notes": self.vars["curve_notes"].get().strip(),
+        }
+        self.curves.append(curve)
+        self.curve_listbox.insert("end", super_project.curve_label(curve["meta"], curve["results"]))
+        self.curve_listbox.selection_clear(0, "end")
+        self.curve_listbox.selection_set(self.curve_listbox.size() - 1)
+        self._update_overlay_button()
+
+    def _add_all_landxml_curves(self) -> None:
+        data = self._load_landxml_data(show_errors=True)
+        if data is None or not self._landxml_curve_presets:
+            messagebox.showinfo("Add All LandXML Curves", "Load a LandXML file with curve geometry first.")
+            return
+        if not self.vars["speed"].get().strip():
+            messagebox.showinfo("Add All LandXML Curves", "Enter a design speed before building all curves.")
+            return
+        try:
+            curves = super_batch.build_curves_from_presets(self._landxml_curve_presets, self._shared_curve_inputs())
+        except ValueError as exc:
+            messagebox.showerror("Add All LandXML Curves", str(exc))
+            return
+        self.curves = curves
+        self.curve_listbox.delete(0, "end")
+        for curve in self.curves:
+            self.curve_listbox.insert("end", super_project.curve_label(curve.get("meta", {}), curve.get("results")))
+        if self.curves:
+            self.curve_listbox.selection_clear(0, "end")
+            self.curve_listbox.selection_set(0)
+            self._load_selected_curve(tk.Event())
+        self._update_overlay_button()
+        messagebox.showinfo("Add All LandXML Curves", f"Loaded {len(self.curves)} curves for combined export.")
+
+    def _update_selected_curve(self) -> None:
+        if not self.last_results:
+            messagebox.showinfo("Update Curve", "Run a calculation first.")
+            return
+        selection = list(self.curve_listbox.curselection())
+        if not selection:
+            messagebox.showinfo("Update Curve", "Select a curve to update.")
+            return
+        idx = selection[0]
+        curve = {
+            "results": self.last_results,
+            "meta": self._current_meta(),
+            "notes": self.vars["curve_notes"].get().strip(),
+        }
+        self.curves[idx] = curve
+        self.curve_listbox.delete(idx)
+        self.curve_listbox.insert(idx, super_project.curve_label(curve["meta"], curve["results"]))
+        self.curve_listbox.selection_set(idx)
+        self._update_overlay_button()
+
+    def _remove_curve(self) -> None:
+        for idx in reversed(self.curve_listbox.curselection()):
+            self.curve_listbox.delete(idx)
+            if idx < len(self.curves):
+                self.curves.pop(idx)
+        self._update_overlay_button()
+
+    def _load_selected_curve(self, _event: tk.Event) -> None:
+        selection = list(self.curve_listbox.curselection())
+        if not selection:
+            return
+        idx = selection[0]
+        if idx >= len(self.curves):
+            return
+        curve = self.curves[idx]
+        results = curve.get("results")
+        meta = curve.get("meta", {}) or {}
+        if not results:
+            return
+        inputs = results.get("inputs", {}) or {}
+        self._suspend_auto = True
+        self.vars["alignment_name"].set(meta.get("alignment_name", ""))
+        self.vars["curve_name"].set(meta.get("curve_name", ""))
+        self.vars["curve_direction"].set(meta.get("curve_direction", "left"))
+        self.vars["project_name"].set(meta.get("project_name", self.vars["project_name"].get()))
+        self.vars["route_name"].set(meta.get("route_name", self.vars["route_name"].get()))
+        self.vars["pc"].set(inputs.get("pc", ""))
+        self.vars["pt"].set(inputs.get("pt", ""))
+        self.vars["speed"].set(str(inputs.get("speed_mph", "")))
+        self.vars["radius"].set(str(inputs.get("radius_ft", "")))
+        self.vars["facility"].set(inputs.get("facility", "centerline"))
+        self.vars["area"].set(inputs.get("area_type", "rural"))
+        self.vars["lane_width"].set(str(inputs.get("lane_width_ft", "")))
+        self.vars["lanes_rotated"].set(str(inputs.get("lanes_rotated", "")))
+        self.vars["e_manual"].set("" if inputs.get("e_manual") is None else str(inputs.get("e_manual")))
+        self.vars["friction"].set(inputs.get("friction_input", ""))
+        self.vars["rel_grad"].set(inputs.get("relative_gradient_input", ""))
+        self.vars["normal_crown"].set(str(inputs.get("normal_crown", "")))
+        self.vars["Lr_manual"].set("" if inputs.get("Lr_manual") is None else str(inputs.get("Lr_manual")))
+        self.vars["Lt_manual"].set("" if inputs.get("Lt_manual") is None else str(inputs.get("Lt_manual")))
+        self.vars["curve_notes"].set(curve.get("notes", ""))
+        self.last_results = results
+        self.last_meta = meta
+        self._render_results(results)
+        self._suspend_auto = False
+        self._compute(show_errors=False)
+
+    def _export_curves(self) -> list[dict]:
+        if self.curves:
+            return self.curves
+        if not self.last_results:
+            return []
+        return [
+            {
+                "results": self.last_results,
+                "meta": self.last_meta or self._current_meta(),
+                "notes": self.vars["curve_notes"].get().strip(),
+            }
+        ]
+
+    def _write_warning_report(self, path: str, warnings: list[str], title: str) -> None:
+        if not warnings:
+            return
+        report_path = f"{os.path.splitext(path)[0]}_{title}_warnings.txt"
+        with open(report_path, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(warnings) + "\n")
+
+    def _select_landxml(self) -> None:
+        path = filedialog.askopenfilename(filetypes=[("LandXML", "*.xml"), ("XML files", "*.xml")], title="Select LandXML")
+        if not path:
+            return
+        self.vars["landxml_path"].set(path)
+        self._load_landxml_data(show_errors=True, autofill=True)
+        if self.last_results:
+            self._render_results(self.last_results)
+
+    def _load_landxml_data(self, show_errors: bool = False, autofill: bool = False) -> super_landxml.LandXMLData | None:
+        path = self.vars["landxml_path"].get().strip()
+        if not path:
+            self._landxml_data = None
+            self._landxml_curve_presets = []
+            self.landxml_status.set("LandXML: none")
+            self._refresh_landxml_curve_picker()
+            self._update_overlay_button()
+            return None
+        try:
+            data = super_landxml.load_landxml(path)
+        except Exception as exc:
+            self._landxml_data = None
+            self._landxml_curve_presets = []
+            self.landxml_status.set(f"LandXML: failed ({os.path.basename(path)})")
+            self._refresh_landxml_curve_picker()
+            self._update_overlay_button()
+            if show_errors:
+                messagebox.showerror("LandXML", f"Failed to load LandXML:\n{exc}")
+            return None
+        self._landxml_data = data
+        self._landxml_curve_presets = data.curve_records()
+        warning_suffix = f" | warnings: {len(data.warnings)}" if data.warnings else ""
+        equation_suffix = f" | station equations: {len(data.station_equations)} (auto)" if data.station_equations else ""
+        self.landxml_status.set(
+            f"LandXML: {os.path.basename(path)} | {data.alignment_name or 'Unnamed'} | {data.linear_unit or 'unknown'} | curves: {len(self._landxml_curve_presets)}{equation_suffix}{warning_suffix}"
+        )
+        self._refresh_landxml_curve_picker()
+        if self._landxml_curve_presets and autofill:
+            if not self.vars["route_name"].get().strip():
+                self.vars["route_name"].set(data.alignment_name)
+            self._apply_landxml_curve(0)
+        self._update_overlay_button()
+        return data
+
+    def _curve_preset_label(self, preset: dict) -> str:
+        return (
+            f"{preset['curve_name']} | {preset['curve_direction']} | "
+            f"PC {preset['pc_station_label']} PT {preset['pt_station_label']} | "
+            f"R {preset['radius_ft']:.0f} ft"
+        )
+
+    def _refresh_landxml_curve_picker(self) -> None:
+        if not hasattr(self, "vars"):
+            return
+        values = [self._curve_preset_label(preset) for preset in self._landxml_curve_presets]
+        if hasattr(self, "landxml_curve_combo"):
+            self.landxml_curve_combo.configure(values=values, state=("readonly" if values else "disabled"))
+        current = self.vars["landxml_curve"].get()
+        if current not in values:
+            self.vars["landxml_curve"].set(values[0] if values else "")
+
+    def _on_landxml_curve_change(self, *_: object) -> None:
+        if self._suspend_auto:
+            return
+        label = self.vars["landxml_curve"].get().strip()
+        if not label or not self._landxml_curve_presets:
+            return
+        for index, preset in enumerate(self._landxml_curve_presets):
+            if self._curve_preset_label(preset) == label:
+                self._apply_landxml_curve(index)
+                break
+
+    def _apply_landxml_curve(self, index: int) -> None:
+        if index < 0 or index >= len(self._landxml_curve_presets):
+            return
+        preset = self._landxml_curve_presets[index]
+        label = self._curve_preset_label(preset)
+        self._suspend_auto = True
+        self.vars["landxml_curve"].set(label)
+        self.vars["alignment_name"].set(preset["alignment_name"])
+        self.vars["curve_name"].set(preset["curve_name"])
+        self.vars["curve_direction"].set(preset["curve_direction"])
+        self.vars["pc"].set(preset["pc_station_label"])
+        self.vars["pt"].set(preset["pt_station_label"])
+        self.vars["radius"].set(str(int(preset["radius_ft"])) if float(preset["radius_ft"]).is_integer() else str(preset["radius_ft"]))
+        self._suspend_auto = False
+        if self._required_fields_present():
+            self._compute(show_errors=False)
+
+    def _overlay_diagnostics(self) -> tuple[list[str], list[str]]:
+        data = self._landxml_data
+        if data is None:
+            return ["No LandXML is loaded. Select a LandXML file before exporting an overlay DXF."], []
+        curves = self._export_curves()
+        if not curves:
+            return ["No calculated curves are available. Run a calculation, then add or keep the calculated curve for export."], list(data.warnings)
+        return super_dxf.overlay_export_issues(curves, data)
+
+    def _overlay_ready(self) -> bool:
+        errors, _warnings = self._overlay_diagnostics()
+        return not errors
+
+    def _update_overlay_button(self) -> None:
+        errors, warnings = self._overlay_diagnostics()
+        if hasattr(self, "overlay_button"):
+            self.overlay_button.configure(state=("normal" if not errors else "disabled"))
+        if hasattr(self, "overlay_status"):
+            if errors:
+                self.overlay_status.set(f"DXF blocked: {errors[0]} Click Show DXF Issues for details.")
+            elif warnings:
+                self.overlay_status.set(f"DXF ready with {len(warnings)} warning(s). Click Show DXF Issues to review.")
+            else:
+                self.overlay_status.set("DXF ready for overlay export.")
+
+    def _show_overlay_issues(self) -> None:
+        errors, warnings = self._overlay_diagnostics()
+        if not errors and not warnings:
+            messagebox.showinfo("DXF Issues", "Overlay DXF is ready. No warnings were found.")
+            return
+        sections: list[str] = []
+        if errors:
+            sections.append("DXF export is blocked by:\n\n" + "\n".join(f"• {issue}" for issue in errors))
+        if warnings:
+            sections.append("Warnings (do not block export):\n\n" + "\n".join(f"• {warning}" for warning in warnings))
+        if errors:
+            sections.append(
+                "To resolve an out-of-range station, extend/re-export the alignment geometry or remove that curve from the export list."
+            )
+        messagebox.showwarning("DXF Issues" if errors else "DXF Warnings", "\n\n".join(sections))
+
+    def _export_ord_csv(self) -> None:
+        curves = self._export_curves()
+        if not curves:
+            messagebox.showinfo("Export ORD CSV", "Run a calculation first.")
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")], title="Save ORD CSV")
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8", newline="") as handle:
+                warnings = super_exports.write_ord_csv(handle, curves)
+        except Exception as exc:
+            messagebox.showerror("Export ORD CSV", f"Failed to export ORD CSV:\n{exc}")
+            return
+        self._write_warning_report(path, warnings, "ord_csv")
+        messagebox.showinfo("Export ORD CSV", f"Saved ORD CSV to:\n{os.path.basename(path)}")
+
+    def _export_detail_dxf(self) -> None:
+        curves = self._export_curves()
+        if not curves:
+            messagebox.showinfo("Export Detail DXF", "Run a calculation first.")
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".dxf", filetypes=[("DXF files", "*.dxf")], title="Save Detail DXF")
+        if not path:
+            return
+        try:
+            warnings = super_dxf.export_detail_dxf(path, curves)
+        except Exception as exc:
+            messagebox.showerror("Export Detail DXF", f"Failed to export detail DXF:\n{exc}")
+            return
+        self._write_warning_report(path, warnings, "detail_dxf")
+        messagebox.showinfo("Export Detail DXF", f"Saved detail DXF to:\n{os.path.basename(path)}")
+
+    def _export_overlay_dxf(self) -> None:
+        curves = self._export_curves()
+        if not curves:
+            messagebox.showinfo("Export Overlay DXF", "Run a calculation first.")
+            return
+        data = self._load_landxml_data(show_errors=True)
+        if data is None:
+            return
+        if not self._overlay_ready():
+            messagebox.showwarning(
+                "Export Overlay DXF",
+                "Overlay export is disabled until the LandXML geometry is usable and all export stations fall within the alignment range.",
+            )
+            return
+        coordinate_config = self._ask_overlay_coordinate_systems()
+        if coordinate_config is None:
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".dxf", filetypes=[("DXF files", "*.dxf")], title="Save Overlay DXF")
+        if not path:
+            return
+        try:
+            warnings = super_dxf.export_overlay_dxf(path, curves, data, coordinate_config)
+        except Exception as exc:
+            messagebox.showerror("Export Overlay DXF", f"Failed to export overlay DXF:\n{exc}")
+            return
+        self._write_warning_report(path, warnings, "overlay_dxf")
+        messagebox.showinfo("Export Overlay DXF", f"Saved overlay DXF to:\n{os.path.basename(path)}")
+
+    def _ask_overlay_coordinate_systems(self) -> dict | None:
+        dialog = tk.Toplevel(self)
+        dialog.title("DXF Coordinate Systems")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.configure(background=DARK_PANEL)
+        result: dict | None = None
+        source = tk.StringVar(value=next(iter(super_dxf.MDOT_COORDINATE_SYSTEMS)))
+        target = tk.StringVar(value=next(iter(super_dxf.MDOT_COORDINATE_SYSTEMS)))
+        body = ttk.Frame(dialog, style="Panel.TFrame", padding=14)
+        body.grid(sticky="nsew")
+        ttk.Label(body, text="Confirm DXF coordinate systems", style="Header.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(
+            body,
+            text="The LandXML does not identify its coordinate system. Select the source zone and the coordinate system assigned to the destination DGN.",
+            style="Muted.Panel.TLabel",
+            wraplength=460,
+            justify="left",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 12))
+        ttk.Label(body, text="LandXML source", style="Panel.TLabel").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Combobox(body, textvariable=source, values=list(super_dxf.MDOT_COORDINATE_SYSTEMS), state="readonly", width=56).grid(row=2, column=1, sticky="ew", pady=4)
+        ttk.Label(body, text="Destination DGN", style="Panel.TLabel").grid(row=3, column=0, sticky="w", pady=4)
+        ttk.Combobox(body, textvariable=target, values=list(super_dxf.MDOT_COORDINATE_SYSTEMS), state="readonly", width=56).grid(row=3, column=1, sticky="ew", pady=4)
+
+        def confirm() -> None:
+            nonlocal result
+            result = {"source_coordinate_system": source.get(), "target_coordinate_system": target.get()}
+            dialog.destroy()
+
+        buttons = ttk.Frame(body, style="Panel.TFrame")
+        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        ttk.Button(buttons, text="Cancel", command=dialog.destroy).grid(row=0, column=0, padx=(0, 6))
+        ttk.Button(buttons, text="Export DXF", command=confirm, style="Primary.TButton").grid(row=0, column=1)
+        body.columnconfigure(1, weight=1)
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.grab_set()
+        dialog.wait_window()
+        return result
+
+    def _export_pdf(self) -> None:
+        curves = self._export_curves()
+        if not curves:
+            messagebox.showinfo("Export PDF", "Run a calculation first.")
+            return
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            title="Save PDF",
+        )
+        if not path:
+            return
+        try:
+            super_pdf.export_pdf(path, curves)
+        except ImportError:
+            messagebox.showerror("Missing Dependency", "ReportLab is required for PDF export.")
+            return
+        except Exception as exc:
+            messagebox.showerror("Export PDF", f"Failed to export PDF:\n{exc}")
+            return
+        messagebox.showinfo("Export PDF", f"Saved PDF to:\n{os.path.basename(path)}")
+        if self.vars["auto_open_pdf"].get():
+            try:
+                super_pdf.open_file(path)
+            except Exception:
+                messagebox.showwarning("Open PDF", f"Saved PDF to:\n{path}")
+
+
+if __name__ == "__main__":
+    app = ModernSuperElevationUI()
+    app.mainloop()
