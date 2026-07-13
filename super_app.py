@@ -207,6 +207,7 @@ class ModernSuperElevationUI(tk.Tk):
                 ("New", self._new_project),
                 ("Load", self._load_project),
                 ("Save", self._save_project),
+                ("Help", self._show_instructions),
             ]
         ):
             ttk.Button(buttons, text=label, command=command).grid(row=0, column=idx, padx=(0, 6))
@@ -379,6 +380,135 @@ class ModernSuperElevationUI(tk.Tk):
             borderwidth=8,
         )
         self.table.grid(row=4, column=0, sticky="nsew")
+
+    def _show_instructions(self) -> None:
+        """Show in-app guidance without requiring the user to leave the calculator."""
+        dialog = tk.Toplevel(self)
+        dialog.title("Superelevation Calculator Instructions")
+        dialog.geometry("820x650")
+        dialog.minsize(620, 460)
+        dialog.transient(self)
+        dialog.configure(background=DARK_BG)
+        dialog.rowconfigure(0, weight=1)
+        dialog.columnconfigure(0, weight=1)
+
+        notebook = ttk.Notebook(dialog)
+        notebook.grid(row=0, column=0, sticky="nsew", padx=12, pady=(12, 6))
+
+        tabs = [
+            (
+                "Quick start",
+                """QUICK START
+
+1. Enter a curve manually, or select a LandXML file first.
+2. Confirm the curve direction, PC, PT, and radius. LandXML values are a starting point; verify them against the design.
+3. Enter the required values marked with an asterisk: PC station, design speed, and curve radius.
+4. Set the roadway choices and any project-specific overrides. Leave an override blank to use the calculated value.
+5. Click Compute, review the transition stations and lane slopes, then add the curve to the project when it is ready.
+6. Save the project and export a PDF, ORD CSV, or overlay DXF as needed.
+
+The calculator is an engineering aid. Verify applicable criteria, stationing, lane names, and all exported geometry in the project design file before production use.
+
+STATION FORMAT
+
+Station format displays values such as 12+34.56. Turn it off to display raw station values. Station equations are applied when formatting exported and displayed stations.
+""",
+            ),
+            (
+                "Inputs",
+                """PROJECT AND CURVE
+
+Project name / Route name: Labels used to organize saved work and reports.
+Alignment name: Name of the roadway alignment. A loaded LandXML alignment can fill this in.
+Curve name: Your label for the curve in the project list and exports.
+Curve direction: Choose left or right in the direction of increasing stationing.
+LandXML curve: Selects a circular curve found in the loaded LandXML and fills its available geometry values.
+PC station *: Point of curvature, where the circular curve begins. This is required.
+PT station: Point of tangency, where the circular curve ends. It is recommended for review and length checks.
+Manual station equations: Enter one or more equations as Back=Ahead. Use this only when LandXML does not supply the station equations.
+Manual internal alignment range: Enter start,end in internal alignment stationing when no LandXML is loaded. It helps validate transition stations.
+Design speed (mph) *: Design speed used to determine calculated superelevation criteria.
+Curve radius (ft) *: Horizontal circular-curve radius.
+
+ROADWAY
+
+Facility / rotation: Select centerline or outside edge to define the rotation/pivot assumption.
+Area type: Rural, urban, or local. This affects the calculation criteria; local uses centerline rotation.
+Lane width (ft): Width of one rotated lane. Default is 12 ft.
+Lanes rotated: Number of lanes included in the rotation. Default is 2.
+
+OVERRIDES
+
+e (ft/ft): Full superelevation rate. Leave blank for the calculated rate.
+Runoff Lr (ft): Length used to transition from normal crown to full superelevation. Leave blank for calculated length.
+Runout Lt (ft): Length used to remove adverse crown before runoff. Leave blank for calculated length.
+Relative gradient: Maximum rate of cross-slope change used by the calculation. Leave blank for calculated value.
+Side friction: Side-friction factor. Leave blank for the calculated value.
+Normal crown: Typical tangent cross slope, expressed as a decimal (0.0200 = 2%).
+Curve notes: Project-specific notes included with the curve.
+
+Values shown beside override fields are the current calculated values. Enter an override only when it has been checked against the governing project criteria.
+""",
+            ),
+            (
+                "LandXML & exports",
+                """LANDXML WORKFLOW
+
+Select LandXML loads the first available alignment and reads its alignment name, start station, linear units, line and circular-arc geometry, and station equations. The curve picker lists detected circular curves; selecting one fills available PC, PT, radius, direction, and curve name values.
+
+Add All LandXML Curves creates project curves from every detected circular curve using the shared roadway settings and design speed. Review each created curve before export.
+
+SUPPORTED AND WARNINGS
+
+The application supports line and circular-arc alignment geometry. It warns when it encounters spirals, incomplete or unsupported geometry, ambiguous displayed stations, out-of-range export stations, or missing coordinate context. A warning does not prove the geometry is usable—review it in the design file.
+
+Station equations from LandXML take precedence over the manual station-equation field. If LandXML contains none, manual equations can be used. Use Back=Ahead notation, for example 1000=1100.
+
+EXPORTS
+
+PDF: A calculation and review report for the curves in the project.
+ORD CSV: Superelevation rows for OpenRoads Designer. Confirm the target section and lanes exist, lane names match, station formatting/regions are correct, and pivot and transition settings match project requirements.
+Overlay DXF: A graphical overlay with lane slope labels, leaders, PC/PT callouts, and curve information. It is not a native civil model.
+
+DXF COORDINATES
+
+LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting and Y=Northing. Because LandXML may not identify its coordinate system, select the correct MDOT MS83/2011 East or West source zone and destination DGN zone when prompted. In ORD or MicroStation, verify working units, origin, placement, rotation, stationing, text scale, and readability.
+""",
+            ),
+        ]
+        for title, content in tabs:
+            self._add_instruction_tab(notebook, title, content)
+
+        ttk.Button(dialog, text="Close", command=dialog.destroy).grid(row=1, column=0, sticky="e", padx=12, pady=(0, 12))
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+
+    def _add_instruction_tab(self, notebook: ttk.Notebook, title: str, content: str) -> None:
+        """Create a read-only, scrollable help page."""
+        page = ttk.Frame(notebook, style="Panel.TFrame", padding=8)
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(0, weight=1)
+        text = tk.Text(
+            page,
+            wrap="word",
+            state="normal",
+            font=("Segoe UI", 10),
+            background=DARK_FIELD,
+            foreground=DARK_TEXT,
+            insertbackground=DARK_TEXT,
+            selectbackground=DARK_SELECT,
+            selectforeground=DARK_TEXT,
+            relief="flat",
+            borderwidth=8,
+            padx=8,
+            pady=8,
+        )
+        scrollbar = ttk.Scrollbar(page, orient="vertical", command=text.yview)
+        text.configure(yscrollcommand=scrollbar.set)
+        text.insert("1.0", content.strip())
+        text.configure(state="disabled")
+        text.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        notebook.add(page, text=title)
 
     def _section(self, parent: ttk.Frame, row: int, title: str) -> int:
         ttk.Label(parent, text=title, style="Header.TLabel").grid(row=row, column=0, columnspan=3, sticky="w", pady=(10, 4))
