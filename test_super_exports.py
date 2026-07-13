@@ -14,6 +14,46 @@ import super_exports
 import super_landxml
 
 
+LANDXML_FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "sr82_synthetic.xml"
+
+
+def _synthetic_landxml_data(
+    *, radius: float = 2000.0, station_equations: list[dict] | None = None
+) -> super_landxml.LandXMLData:
+    """Build invented alignment geometry without relying on local project files."""
+    line = super_landxml.LineSegment(start=(0.0, 0.0), end=(150.0, 0.0), length=150.0)
+    arc_length = math.pi * radius / 6.0
+    arc = super_landxml.ArcSegment(
+        start=(150.0, 0.0),
+        end=(150.0 + radius * 0.5, radius * (1.0 - math.sqrt(3.0) / 2.0)),
+        center=(150.0, radius),
+        radius=radius,
+        length=arc_length,
+        rotation="ccw",
+    )
+    tail = super_landxml.LineSegment(
+        start=arc.end,
+        end=(arc.end[0] + 100.0, arc.end[1]),
+        length=100.0,
+    )
+    segments = [line, arc, tail]
+    return super_landxml.LandXMLData(
+        path=Path("synthetic.xml"),
+        alignment_name="Synthetic Alignment",
+        start_station=900.0,
+        alignment_length=sum(segment.length for segment in segments),
+        linear_unit="USSurveyFoot",
+        lines=[line, tail],
+        curves=[arc],
+        spirals=[],
+        station_equations=station_equations or [],
+        superelevation_nodes=[],
+        coordinate_system=None,
+        warnings=[],
+        _segments=segments,
+    )
+
+
 def _parse_dxf_entities(text: str) -> list[dict]:
     tokens = text.splitlines()
     entities: list[dict] = []
@@ -168,9 +208,11 @@ class SuperExportTests(unittest.TestCase):
         self.assertTrue(rows[0]["CrossSlope"].startswith("-0."))
 
     def test_ord_csv_appends_station_region_after_landxml_equation(self):
-        data = super_landxml.load_landxml(Path("Sample Data") / "SR8.xml")
+        data = _synthetic_landxml_data(
+            station_equations=[{"staInternal": "1000", "staBack": "1000", "staAhead": "500"}]
+        )
         curves = super_batch.build_curves_from_presets(
-            [data.curve_records()[4]],
+            data.curve_records(),
             {
                 "project_name": "SR8",
                 "route_name": "SR8",
@@ -194,8 +236,8 @@ class SuperExportTests(unittest.TestCase):
         rows = list(csv.DictReader(buffer))
         stations = [row["Station"] for row in rows]
 
-        self.assertIn("1542+93.903", stations)
-        self.assertIn("1233+15.920R2", stations)
+        self.assertTrue(any(not station.endswith("R2") for station in stations))
+        self.assertTrue(any(station.endswith("R2") for station in stations))
         self.assertTrue(all("R1" not in station for station in stations))
 
     def test_ord_station_region_increments_for_each_equation(self):
@@ -205,7 +247,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertEqual(super_exports._station_region(2001.0, equations), 3)
 
     def test_landxml_sample_is_parsed_and_station_maps_to_xy(self):
-        path = Path("Sample Data") / "SR 82.xml"
+        path = LANDXML_FIXTURE
         data = super_landxml.load_landxml(path)
 
         self.assertEqual(data.alignment_name, "SR 82")
@@ -242,21 +284,23 @@ class SuperExportTests(unittest.TestCase):
         self.assertGreater(mid_xy[0], data.curves[0].start[0])
 
     def test_landxml_station_equation_uses_civil_labels_and_internal_geometry(self):
-        data = super_landxml.load_landxml(Path("Sample Data") / "SR8.xml")
-        curve_six = data.curve_records()[5]
+        data = _synthetic_landxml_data(
+            station_equations=[{"staInternal": "1000", "staBack": "1000", "staAhead": "500"}]
+        )
+        curve = data.curve_records()[0]
 
-        self.assertEqual(curve_six["pc_station_label"], "1240+08.228")
-        self.assertEqual(curve_six["pt_station_label"], "1260+16.005")
+        self.assertEqual(curve["pc_station_label"], "5+50.000")
+        self.assertNotEqual(curve["pc_station_label"], Super.format_station(curve["pc_station_ft"], True))
         self.assertAlmostEqual(
             Super.civil_to_internal_station(
-                Super.parse_station(curve_six["pc_station_label"]), data.station_equations, data.station_range()
+                Super.parse_station(curve["pc_station_label"]), data.station_equations, data.station_range()
             ),
-            curve_six["pc_station_ft"],
+            curve["pc_station_ft"],
             places=3,
         )
 
     def test_landxml_curve_direction_follows_increasing_station_geometry(self):
-        data = super_landxml.load_landxml(Path("Sample Data") / "SR8.xml")
+        data = super_landxml.load_landxml(LANDXML_FIXTURE)
         records = data.curve_records()
 
         # Curve 1 is clockwise after converting LandXML Northing/Easting to
@@ -266,16 +310,16 @@ class SuperExportTests(unittest.TestCase):
         self.assertEqual(records[1]["curve_direction"], "left")
 
     def test_landxml_radius_is_rounded_to_three_decimals_before_table_lookup(self):
-        data = super_landxml.load_landxml(Path("Sample Data") / "SR8.xml")
-        curve_two = data.curve_records()[1]
+        data = _synthetic_landxml_data(radius=3499.9999999999995)
+        curve = data.curve_records()[0]
 
-        self.assertEqual(data.curves[1].radius, 3499.9999999999995)
-        self.assertEqual(curve_two["radius_ft"], 3500.0)
+        self.assertEqual(data.curves[0].radius, 3499.9999999999995)
+        self.assertEqual(curve["radius_ft"], 3500.0)
         results = Super.calculate_superelevation(
-            curve_two["pc_station_label"],
-            curve_two["pt_station_label"],
+            curve["pc_station_label"],
+            curve["pt_station_label"],
             "65",
-            str(curve_two["radius_ft"]),
+            str(curve["radius_ft"]),
             "centerline",
             "rural",
             "12",
@@ -342,7 +386,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertIn("Key Stations", text)
 
     def test_overlay_dxf_uses_real_alignment_geometry(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "overlay.dxf"
             warnings = super_dxf.export_overlay_dxf(path, [self.sample_overlay_curve("right")], landxml)
@@ -357,7 +401,7 @@ class SuperExportTests(unittest.TestCase):
     def test_overlay_dxf_uses_mdot_layer_colors_and_weights(self):
         import ezdxf
 
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "overlay_symbology.dxf"
             super_dxf.export_overlay_dxf(path, [self.sample_overlay_curve("right")], landxml)
@@ -378,7 +422,7 @@ class SuperExportTests(unittest.TestCase):
     def test_overlay_dxf_uses_engineering_regular_text_style(self):
         import ezdxf
 
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "overlay_font.dxf"
             super_dxf.export_overlay_dxf(path, [self.sample_overlay_curve("right")], landxml)
@@ -398,7 +442,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertTrue(all(entity.dxf.style == "Engineering Regular" for entity in overlay_text))
 
     def test_overlay_dxf_labels_include_station_and_both_lane_slopes(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
         rows = super_exports.build_normalized_rows([curve])
         left_full = next(row for row in rows if row["side"] == "left" and row["event_type"] == "Full super")
@@ -424,7 +468,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertNotIn(f"R:{right_full['slope_label']}", label_text)
 
     def test_overlay_dxf_prefixes_pc_and_pt_station_callouts(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -437,7 +481,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertIn("PT 140+00.000", labels)
 
     def test_overlay_dxf_rotates_callout_text_perpendicular_to_alignment(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
         rows = super_exports.build_normalized_rows([curve])
         left_full = next(row for row in rows if row["side"] == "left" and row["event_type"] == "Full super")
@@ -463,7 +507,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertLess(diff, 1.0)
 
     def test_overlay_curve_title_is_parallel_and_larger_than_callouts(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
         first_station = min(float(row["station"]) for row in super_exports.build_normalized_rows([curve]))
 
@@ -488,7 +532,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertGreater(float(title["40"]), super_dxf.DEFAULT_CONFIG["text_height"])
 
     def test_overlay_curve_title_formats_radius_to_three_decimals(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
         curve["results"]["inputs"]["radius_ft"] = 5654.5779999999995
 
@@ -502,7 +546,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertIn("R=5,654.578'", titles)
 
     def test_overlay_dxf_extends_lane_leaders_for_close_labels(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -544,7 +588,7 @@ class SuperExportTests(unittest.TestCase):
             self.assertTrue(all(b - a >= 55.0 for a, b in zip(packed, packed[1:])))
 
     def test_overlay_text_uses_side_aware_endpoint_alignment(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -563,7 +607,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertIn("2", text_alignments)
 
     def test_overlay_dxf_separates_station_and_slope_across_alignment_direction(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curve = self.sample_overlay_curve("right")
         rows = super_exports.build_normalized_rows([curve])
         left_full = next(row for row in rows if row["side"] == "left" and row["event_type"] == "Full super")
@@ -593,7 +637,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertLess(normal_delta, tangent_delta)
 
     def test_overlay_dxf_combined_export_includes_multiple_curve_labels(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curves = super_batch.build_curves_from_presets(
             landxml.curve_records(),
             {
@@ -624,7 +668,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertIn("Curve 2", text)
 
     def test_build_all_curves_from_landxml_presets(self):
-        landxml = super_landxml.load_landxml(Path("Sample Data") / "SR 82.xml")
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curves = super_batch.build_curves_from_presets(
             landxml.curve_records(),
             {
