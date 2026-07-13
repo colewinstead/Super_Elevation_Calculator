@@ -17,6 +17,7 @@ build/
 dist/
 *.egg-info/
 *.app
+*.exe
 
 # Tool caches
 .pytest_cache/

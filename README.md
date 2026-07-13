@@ -1,180 +1,173 @@
-# Superelevation Calculator
+<p align="center">
+  <img src="docs/superelevation-banner.svg" alt="Superelevation Calculator" width="100%">
+</p>
 
-Superelevation calculator with MDOT-style calculations, PDF reporting, CSV exports, and DXF drawing handoff for OpenRoads Designer / MicroStation review workflows.
+<p align="center">
+  <strong>Roadway superelevation calculations, design review, and CAD-ready exports in one Windows desktop app.</strong>
+</p>
 
-The desktop interface opens maximized so the calculation and export controls remain visible.
+<p align="center">
+  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/colewinstead/Super_Elevation_Calculator?style=for-the-badge&color=2ea44f"></a>
+  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/actions/workflows/tests.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/colewinstead/Super_Elevation_Calculator/tests.yml?branch=main&style=for-the-badge&label=tests"></a>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="Platform" src="https://img.shields.io/badge/Windows-Desktop-0078D4?style=for-the-badge&logo=windows11&logoColor=white">
+</p>
 
-## Current workflows
+<p align="center">
+  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest"><strong>Download for Windows</strong></a>
+  &nbsp;&middot;&nbsp;
+  <a href="#quick-start">Run from source</a>
+  &nbsp;&middot;&nbsp;
+  <a href="#engineering-notes">Engineering notes</a>
+</p>
 
-The desktop app in [super_app.py](/C:/Python%20Projects/Super_Elevation_Calculator/super_app.py) now supports:
+---
 
-- `Export PDF`
-- `Export ORD CSV`
-- `Export Overlay DXF`
+## What it does
 
-The original calculation path is still driven by [Super.py](/C:/Python%20Projects/Super_Elevation_Calculator/Super.py), and the PDF report still uses the same calculated curve objects as before.
+Superelevation Calculator turns roadway curve inputs and LandXML alignments into review-ready calculations and deliverables. It is designed around practical OpenRoads Designer and MicroStation handoff workflows.
 
-## Running the app
+| Calculate | Review | Export |
+|:--|:--|:--|
+| MDOT-style curve calculations | Lane-by-lane slopes and stations | PDF calculation reports |
+| Normal crown and full super cases | Project, route, alignment, and curve metadata | ORD-compatible CSV |
+| Station equations | LandXML geometry validation | Real-coordinate overlay DXF |
+| East/West coordinate transforms | Actionable export warnings | Reusable project JSON |
 
-Run:
+## Typical workflow
+
+```mermaid
+flowchart LR
+    A["Enter curve data"] --> B["Calculate transitions"]
+    X["Load LandXML"] --> B
+    B --> C["Review lane events"]
+    C --> D["PDF report"]
+    C --> E["ORD CSV"]
+    C --> F["Overlay DXF"]
+```
+
+1. Enter curve information manually or load an alignment from LandXML.
+2. Review calculated transition stations and signed lane slopes.
+3. Save the project for later editing.
+4. Export a PDF report, ORD CSV, or CAD overlay DXF.
+5. Verify the result in OpenRoads Designer or MicroStation before production use.
+
+## Download
+
+Download the latest Windows executable from [GitHub Releases](https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest). The executable is distributed as a release asset instead of being stored in the source tree.
+
+> [!IMPORTANT]
+> This is an engineering aid. Always validate criteria, stationing, coordinate systems, lane naming, and exported geometry against the governing standards and the project design file.
+
+## Quick start
+
+Requires Python 3.11 or newer.
 
 ```powershell
+git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
+Set-Location .\Super_Elevation_Calculator
 python -m pip install -r .\requirements.txt
 python .\super_app.py
 ```
 
-The PDF export depends on `reportlab`. If you skip the install step, the app will still run, but `Export PDF` will show a missing dependency warning.
+## Export formats
 
-## Metadata
+### PDF report
 
-The app now stores:
-
-- `Project name`
-- `Route name`
-- `Alignment name`
-- `Curve name`
-- `Curve direction`
-- optional `LandXML` path
-
-These values are saved with project JSON files through [super_project.py](/C:/Python%20Projects/Super_Elevation_Calculator/super_project.py).
-
-## CSV exports
+Produces a formatted calculation report using the same curve objects shown in the desktop interface.
 
 ### ORD CSV
 
-The ORD CSV uses Bentley’s documented import header:
+Writes Bentley's documented superelevation import columns:
 
 ```text
 SuperelevationLane,Station,CrossSlope,PivotAbout,PointType,TransitionType,NonLinearCurveLength
 ```
 
-Current defaults:
-
-- `TransitionType = L`
-- `NonLinearCurveLength = 0`
-- `PivotAbout = RS` for left lane, `LS` for right lane
-- lane names default to `Left Lane` and `Right Lane` unless overridden in metadata later
-- station labels after the first alignment equation receive the ORD suffix `R2`; subsequent regions use `R3`, `R4`, and so on
-
-### ORD import checklist
-
-Before relying on ORD import in production, verify in OpenRoads Designer that:
-
-- the target superelevation section already exists
-- the target lanes already exist
-- lane names in ORD match the CSV lane names
-- station formatting matches the design file civil formatting
-- station equation behavior matches your reference alignment settings
-
-The app writes a sidecar warnings file for ORD CSV exports when guidance needs to be preserved.
-
-## DXF exports
+Station labels account for LandXML station equations and advance through ORD regions such as `R2`, `R3`, and `R4`.
 
 ### Overlay DXF
 
-`Export Overlay DXF` is only enabled when:
+Creates a graphics overlay in real project coordinates from LandXML line and circular-arc geometry. It includes:
 
-- a LandXML file is loaded successfully
-- the LandXML contains usable horizontal geometry
-- no unsupported spiral handling is required
-- every export station falls within the alignment limits
+- lane-specific leaders and signed slope labels
+- PC and PT station callouts
+- curve names, direction, and radius
+- collision-aware label placement
+- MDOT-oriented levels, colors, weights, and text styling
+- US survey foot declarations and optional East/West zone transformation
 
-When the button is disabled, use **Show DXF Issues** directly beneath it. The dialog identifies each blocking curve, lane, event, and station, and separately lists non-blocking LandXML warnings such as station equations.
-
-When enabled, the DXF is drawn in real project coordinates from the LandXML alignment geometry. This is still a graphics overlay, not native Bentley civil data.
-
-The overlay DXF declares the LandXML linear unit (including US survey feet) in its header so CAD applications can insert/reference it at the correct scale. A coordinate-system transformation still requires coordinate-reference metadata in the LandXML or matching coordinates in the destination DGN.
-
-LandXML points are read as Northing/Easting and written to CAD as X=Easting, Y=Northing. Curve direction is evaluated along increasing station after this conversion.
-
-Imported LandXML curve radii are rounded to three decimal places before superelevation table lookup, preventing serialization noise such as `3499.9999999999995` from selecting the next table row.
-
-Before every overlay DXF export, the app requires you to select the LandXML source and destination DGN coordinate systems: MDOT MS83/2011 East or West Zone (US survey foot). It preserves coordinates when the zones match and transforms all overlay geometry and labels when they differ.
-
-For curves where the selected criteria require normal crown only, exports contain normal-crown records at the PC and PT (using the normal-crown slope) and do not create zero-slope, runoff, or full-superelevation events.
-
-### Station equations
-
-LandXML `StaEquation` records are applied automatically. PC/PT entry and exported labels use the displayed civil stationing, while DXF geometry continues to use continuous internal chainage. Without LandXML, enter manual equations as `Back=Ahead`, separating multiple equations with semicolons; for example, `1543+52.403=1233+15.920`. If the same displayed station can occur on both sides of an equation, also enter the continuous internal alignment range as `Start,End` so the app can resolve the intended location.
-
-The overlay exporter now uses lane-specific leaders instead of a full cross tick through the alignment:
-
-- each lane event gets its own leader line from the alignment out toward that lane side
-- each callout shows the station plus only that lane's slope
-- text is rotated perpendicular to the alignment
-- nearby same-side callouts extend farther from the alignment as needed to reduce overlap
-- a curve name marker is still placed near the start of each exported curve
-
-Nearby callouts are packed along the alignment with a minimum separation, use two-segment elbow leaders, and are justified from the leader endpoint so labels consistently extend away from the roadway on either side.
-
-Callouts located exactly at curve endpoints prefix their station with `PC` or `PT`, such as `PC 1456+68.845`.
-
-Curve annotations use two parallel lines—such as `Curve 1 (right)` followed by `R=5,654.578'`—are slightly larger than callout text, and sit just beyond the packed label field to avoid collisions.
-
-Overlay graphics use the MDOT ORD levels `ALI_DESIGN_ML_CURVES` (alignment), `ALI_DESIGN_ML_LABELS` (leaders), `ALI_DESIGN_ML_STA` (station text), and `ALI_DESIGN_ML_LABELS_TX` (slope and curve text), allowing project print styles to control their plotted appearance.
-
-Those DXF layers also carry the MDOT level symbology: curves use color 55, leaders use color 10, and text uses DXF color 7 so it displays white in ORD. All use continuous style with the DXF lineweight corresponding to ORD weight 4. Overlay entities are created ByLevel.
-
-Overlay station, slope, and curve labels use the `Engineering Regular` DXF text style backed by the MDOT workspace TrueType font file `EngineeringRegular.ttf`. The DXF includes extended TrueType family metadata so ORD does not interpret it as a missing SHX font. Text size remains controlled by the overlay export configuration.
-
-The exporter reduces overlap automatically, but final text scale and sheet readability should still be checked in ORD / MicroStation.
-
-### DGN / MicroStation notes
-
-DXF is used as the handoff format because it is dependable from Python and can be referenced or imported into DGN. Native DGN civil-object generation is not part of this implementation.
-
-Always verify in ORD / MicroStation:
-
-- reference units
-- working units
-- origin / coincident placement
-- rotation
-- stationing assumptions
-- text scale and readability
+The DXF is a graphics handoff, not a native Bentley civil model.
 
 ## LandXML support
 
-The LandXML parser in [super_landxml.py](/C:/Python%20Projects/Super_Elevation_Calculator/super_landxml.py) currently supports:
+| Supported | Detected with warning |
+|:--|:--|
+| Alignment name and start station | Spiral geometry |
+| Linear units | Unsupported or incomplete geometry |
+| Line geometry | Ambiguous displayed stations |
+| Circular arcs | Out-of-range export stations |
+| Station equations | Missing coordinate context |
 
-- alignment name
-- start station
-- alignment length
-- units
-- line geometry
-- circular arc geometry
-- station equations detection
-- superelevation node detection
+## Engineering notes
 
-Current first-pass limitation:
+<details>
+<summary><strong>ORD import checklist</strong></summary>
 
-- spirals are detected and warned about, but not converted for overlay geometry
+Before production use, verify that:
 
-## Sign convention
+- the target superelevation section and lanes already exist
+- lane names match between the application and ORD
+- station formatting matches the design file
+- station equations resolve to the intended alignment region
+- transition type, pivot settings, and nonlinear lengths match project criteria
 
-The shared export/sign logic is centralized in [super_exports.py](/C:/Python%20Projects/Super_Elevation_Calculator/super_exports.py).
+</details>
 
-Current convention:
+<details>
+<summary><strong>Lane slope sign convention</strong></summary>
 
-- normal crown: both lanes negative
-- right-hand curve: left lane positive, right lane negative through super
-- left-hand curve: left lane negative, right lane positive through super
-- positive display values always show `+`
+- Normal crown: both lanes negative
+- Right-hand curve: left lane positive, right lane negative through full super
+- Left-hand curve: left lane negative, right lane positive through full super
+- Positive display values always include an explicit `+`
+
+</details>
+
+<details>
+<summary><strong>DXF and MicroStation checks</strong></summary>
+
+Always verify reference units, working units, origin, coincident placement, rotation, stationing assumptions, text scale, and readability in ORD or MicroStation.
+
+LandXML points are interpreted as Northing/Easting and written to CAD as X=Easting and Y=Northing. Coordinate transformation requires the correct MDOT MS83/2011 East or West zone selection.
+
+</details>
+
+## Project structure
+
+| File | Purpose |
+|:--|:--|
+| [`super_app.py`](super_app.py) | Desktop application entry point |
+| [`Super.py`](Super.py) | Core superelevation calculation path |
+| [`super_landxml.py`](super_landxml.py) | LandXML parsing and station geometry |
+| [`super_exports.py`](super_exports.py) | Shared lane-event and export logic |
+| [`super_dxf.py`](super_dxf.py) | Overlay DXF generation |
+| [`super_pdf.py`](super_pdf.py) | PDF calculation reports |
+| [`super_project.py`](super_project.py) | Project save/load support |
 
 ## Tests
 
-Run:
-
 ```powershell
+python -m pip install -r .\requirements.txt
 python -m unittest -v
 ```
 
-The tests cover:
+The test suite covers calculation sharing, station formatting, lane signs, LandXML parsing, coordinate transforms, project persistence, ORD CSV mapping, and DXF generation.
 
-- station formatting
-- sign formatting
-- lane sign conventions
-- normalized lane-event rows used internally by ORD and DXF exports
-- ORD CSV header/mapping
-- LandXML parsing
-- station-to-XY conversion
-- DXF export smoke coverage
+## Contributing
+
+Bug reports and focused pull requests are welcome. When reporting an export problem, include the expected stationing/sign behavior and a minimal, non-sensitive reproduction case.
+
+## License
+
+No open-source license has been selected yet. The source is publicly visible, but reuse and redistribution rights are not granted unless a license is added.
