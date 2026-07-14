@@ -1432,6 +1432,7 @@ def calculate_superelevation(
         "area_type": area,
         "pt_ft": pt_ft,
         "station_equations": normalized_equations,
+        "alignment_station_range": alignment_station_range,
         "e": e,
         "e_max": e_max,
         "e_source": e_source,

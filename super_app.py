@@ -12,7 +12,7 @@ import super_exports
 import super_landxml
 import super_pdf
 import super_project
-from super_lane import build_lane_rows, lane_profile_points, slope_at_station, station_for_slope
+from super_lane import build_lane_rows, lane_profile_points, parse_slope_percent, slope_at_station, slope_matches
 
 
 DARK_BG = "#151719"
@@ -733,7 +733,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             lines.append("")
             lines.append(f"Curve notes: {self.vars['curve_notes'].get().strip()}")
         if lookup_lines:
-            lines.extend([""] + lookup_lines)
+            lines = lookup_lines + [""] + lines
         self._write_text(self.output, "\n".join(lines))
 
         left_rows, right_rows = build_lane_rows(results, meta.get("curve_direction", "left"), station_format)
@@ -766,7 +766,11 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         reference = float(self.last_results.get("reverse_crown_ft", 0.0))
         if station_text:
             try:
-                station = Super.civil_to_internal_station(Super.parse_station(station_text), self.last_results.get("station_equations"))
+                station = Super.civil_to_internal_station(
+                    Super.parse_station(station_text),
+                    self.last_results.get("station_equations"),
+                    self.last_results.get("alignment_station_range"),
+                )
             except ValueError:
                 messagebox.showerror("Lookup", "Invalid lookup station.")
                 return
@@ -779,20 +783,58 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
                 )
         if super_text:
             try:
-                raw = float(super_text)
+                target = parse_slope_percent(super_text)
             except ValueError:
-                messagebox.showerror("Lookup", "Invalid lookup super value.")
+                messagebox.showerror("Lookup", "Invalid lookup super value. Enter 2, 2%, or 0.02 for two percent.")
                 return
-            target = raw if abs(raw) > 1.0 else raw * 100.0
             lookup_lines.append(
                 f"Lookup super: {super_exports.format_slope_label(target)} ({super_exports.slope_decimal(target)} ft/ft)"
             )
             for lane in ("left", "right"):
-                station = station_for_slope(points[lane], target, reference)
-                lookup_lines.append(
-                    f"{lane.title()} lane station: {Super.format_result_station(self.last_results, station, True) if station is not None else 'n/a'}"
-                )
+                matches = slope_matches(points[lane], target)
+                lookup_lines.append(f"{lane.title()} lane:")
+                if not matches:
+                    lookup_lines.append("  No match")
+                    continue
+
+                nearest_index = None
+                if station_text:
+                    nearest_index = min(
+                        range(len(matches)),
+                        key=lambda index: self._distance_to_station_range(matches[index], reference),
+                    )
+                point_indexes = [
+                    index for index, (start, end) in enumerate(matches) if abs(end - start) <= 1e-6
+                ]
+                for index, (start, end) in enumerate(matches):
+                    suffix = " (nearest to lookup station)" if index == nearest_index else ""
+                    if end - start > 1e-6:
+                        rate = abs(float(self.last_results.get("e", 0.0))) * 100.0
+                        label = "Full-super range" if abs(abs(target) - rate) <= 1e-6 else "Constant range"
+                        lookup_lines.append(
+                            f"  {label}: {Super.format_result_station(self.last_results, start, True)} to "
+                            f"{Super.format_result_station(self.last_results, end, True)}{suffix}"
+                        )
+                        continue
+                    if len(point_indexes) == 1:
+                        label = "Station"
+                    elif index == point_indexes[0]:
+                        label = "Entering"
+                    elif index == point_indexes[-1]:
+                        label = "Exiting"
+                    else:
+                        label = f"Match {point_indexes.index(index) + 1}"
+                    lookup_lines.append(
+                        f"  {label}: {Super.format_result_station(self.last_results, start, True)}{suffix}"
+                    )
         self._render_results(self.last_results, lookup_lines)
+
+    @staticmethod
+    def _distance_to_station_range(station_range: tuple[float, float], station: float) -> float:
+        start, end = station_range
+        if start <= station <= end:
+            return 0.0
+        return min(abs(station - start), abs(station - end))
 
     def _current_meta(self) -> dict:
         return {
