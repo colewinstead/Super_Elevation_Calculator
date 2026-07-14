@@ -46,8 +46,12 @@ class ModernSuperElevationUI(tk.Tk):
             window_height = min(780, max(680, screen_height - 80))
             self.geometry(f"{window_width}x{window_height}")
         else:
-            self.minsize(1180, 720)
-            self.geometry("1280x780")
+            self.minsize(960, 600)
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            window_width = min(1280, max(960, screen_width - 40))
+            window_height = min(780, max(600, screen_height - 80))
+            self.geometry(f"{window_width}x{window_height}")
         self.last_results: dict | None = None
         self.last_meta: dict = {}
         self.curves: list[dict] = []
