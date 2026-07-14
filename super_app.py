@@ -260,18 +260,15 @@ class ModernSuperElevationUI(tk.Tk):
                 ("Help", self._show_instructions),
             ]
         ):
-            if IS_MACOS:
-                button_row, button_column = divmod(idx, 2)
-                ttk.Button(buttons, text=label, command=command).grid(
-                    row=button_row,
-                    column=button_column,
-                    sticky="ew",
-                    padx=(0, 6),
-                    pady=(0, 6 if button_row == 0 else 0),
-                )
-                buttons.columnconfigure(button_column, weight=1)
-            else:
-                ttk.Button(buttons, text=label, command=command).grid(row=0, column=idx, padx=(0, 6))
+            button_row, button_column = divmod(idx, 2)
+            ttk.Button(buttons, text=label, command=command).grid(
+                row=button_row,
+                column=button_column,
+                sticky="ew",
+                padx=(0, 6),
+                pady=(0, 6 if button_row == 0 else 0),
+            )
+            buttons.columnconfigure(button_column, weight=1)
 
         meta = ttk.Frame(panel, style="Panel.TFrame")
         meta.grid(row=2, column=0, sticky="ew")
@@ -297,7 +294,7 @@ class ModernSuperElevationUI(tk.Tk):
         self.curve_listbox = tk.Listbox(
             panel,
             width=(22 if IS_MACOS else 30),
-            height=18,
+            height=12,
             activestyle="dotbox",
             background=DARK_FIELD,
             foreground=DARK_TEXT,
@@ -422,7 +419,7 @@ class ModernSuperElevationUI(tk.Tk):
             panel,
             wrap="word",
             width=(35 if IS_MACOS else 42),
-            height=18,
+            height=12,
             font=TEXT_FONT,
             state="disabled",
             background=DARK_FIELD,
@@ -459,7 +456,7 @@ class ModernSuperElevationUI(tk.Tk):
             panel,
             wrap="none",
             width=(35 if IS_MACOS else 42),
-            height=13,
+            height=8,
             font=MONO_FONT,
             state="disabled",
             background=DARK_FIELD,
