@@ -296,7 +296,7 @@ class ModernSuperElevationUI(tk.Tk):
 
         self.curve_listbox = tk.Listbox(
             panel,
-            width=(22 if IS_MACOS else 38),
+            width=(22 if IS_MACOS else 30),
             height=18,
             activestyle="dotbox",
             background=DARK_FIELD,
@@ -421,7 +421,7 @@ class ModernSuperElevationUI(tk.Tk):
         self.output = tk.Text(
             panel,
             wrap="word",
-            width=(35 if IS_MACOS else 80),
+            width=(35 if IS_MACOS else 42),
             height=18,
             font=TEXT_FONT,
             state="disabled",
@@ -458,7 +458,7 @@ class ModernSuperElevationUI(tk.Tk):
         self.table = tk.Text(
             panel,
             wrap="none",
-            width=(35 if IS_MACOS else 80),
+            width=(35 if IS_MACOS else 42),
             height=13,
             font=MONO_FONT,
             state="disabled",
