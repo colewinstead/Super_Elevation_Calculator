@@ -1,0 +1,43 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt "pyinstaller>=6.0,<7.0"
+
+      - name: Build Windows executable
+        run: pyinstaller --clean --noconfirm SuperElevation.spec
+
+      - name: Create checksum
+        shell: pwsh
+        run: Get-FileHash dist/SuperElevation.exe -Algorithm SHA256 | Format-List | Out-File dist/SHA256SUMS.txt
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: SuperElevation-Windows
+          path: |
+            dist/SuperElevation.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30

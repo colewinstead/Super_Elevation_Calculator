@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -11,7 +13,7 @@ import super_exports
 import super_landxml
 import super_pdf
 import super_project
-from super_lane import build_lane_rows, lane_profile_points, slope_at_station, station_for_slope
+from super_lane import build_lane_rows, lane_profile_points, parse_slope_percent, slope_at_station, slope_matches
 
 
 DARK_BG = "#151719"
@@ -24,13 +26,35 @@ DARK_MUTED = "#aeb7c2"
 DARK_ACCENT = "#8ab4f8"
 DARK_SELECT = "#2f5f9f"
 
+IS_MACOS = sys.platform == "darwin"
+UI_FONT = (".AppleSystemUIFont", 11) if IS_MACOS else ("Segoe UI", 9)
+HEADER_FONT = (".AppleSystemUIFont", 13, "bold") if IS_MACOS else ("Segoe UI", 12, "bold")
+VALUE_FONT = (".AppleSystemUIFont", 12, "bold") if IS_MACOS else ("Segoe UI", 11, "bold")
+TEXT_FONT = (".AppleSystemUIFont", 11) if IS_MACOS else ("Segoe UI", 10)
+MONO_FONT = ("Menlo", 10) if IS_MACOS else ("Consolas", 9)
+
 
 class ModernSuperElevationUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Superelevation Calculator")
-        self.minsize(1180, 720)
-        self.geometry("1280x780")
+        if IS_MACOS:
+            self.minsize(1080, 680)
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            window_width = min(1280, max(1080, screen_width - 40))
+            window_height = min(780, max(680, screen_height - 80))
+            self.geometry(f"{window_width}x{window_height}")
+        else:
+            self.minsize(900, 560)
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            dpi_scale = max(1.0, float(self.tk.call("tk", "scaling")) / (96.0 / 72.0))
+            usable_width = int((screen_width - 80) / dpi_scale)
+            usable_height = int((screen_height - 100) / dpi_scale)
+            window_width = min(1280, max(900, usable_width))
+            window_height = min(780, max(560, usable_height))
+            self.geometry(f"{window_width}x{window_height}")
         self.last_results: dict | None = None
         self.last_meta: dict = {}
         self.curves: list[dict] = []
@@ -78,12 +102,14 @@ class ModernSuperElevationUI(tk.Tk):
             "friction": tk.StringVar(value="auto"),
             "normal_crown": tk.StringVar(value="0.0200"),
         }
+        self.advanced_summary = tk.StringVar(value="Advanced: Automatic defaults")
 
         self._configure_style()
         self._build_layout()
         self._setup_auto_handlers()
         self._update_overlay_button()
-        self.after_idle(self._maximize_window)
+        if IS_MACOS:
+            self.after_idle(self._maximize_window)
 
     def _maximize_window(self) -> None:
         """Open maximized so all controls remain available on launch."""
@@ -97,7 +123,7 @@ class ModernSuperElevationUI(tk.Tk):
 
     def _configure_style(self) -> None:
         self.configure(background=DARK_BG)
-        self.option_add("*Font", ("Segoe UI", 9))
+        self.option_add("*Font", UI_FONT)
         self.option_add("*Entry.Background", DARK_FIELD)
         self.option_add("*Entry.Foreground", DARK_TEXT)
         self.option_add("*Entry.InsertBackground", DARK_TEXT)
@@ -110,14 +136,17 @@ class ModernSuperElevationUI(tk.Tk):
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure(".", background=DARK_BG, foreground=DARK_TEXT, fieldbackground=DARK_FIELD)
+        base_style = {"background": DARK_BG, "foreground": DARK_TEXT, "fieldbackground": DARK_FIELD}
+        if IS_MACOS:
+            base_style["font"] = UI_FONT
+        style.configure(".", **base_style)
         style.configure("TFrame", background=DARK_BG)
         style.configure("Panel.TFrame", background=DARK_PANEL)
         style.configure("TLabel", background=DARK_BG, foreground=DARK_TEXT)
         style.configure("Panel.TLabel", background=DARK_PANEL, foreground=DARK_TEXT)
         style.configure("Muted.Panel.TLabel", background=DARK_PANEL, foreground=DARK_MUTED)
-        style.configure("Header.TLabel", font=("Segoe UI", 12, "bold"), background=DARK_PANEL, foreground=DARK_TEXT)
-        style.configure("Value.TLabel", font=("Segoe UI", 11, "bold"), background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure("Header.TLabel", font=HEADER_FONT, background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure("Value.TLabel", font=VALUE_FONT, background=DARK_PANEL, foreground=DARK_TEXT)
         style.configure(
             "TEntry",
             fieldbackground=DARK_FIELD,
@@ -179,20 +208,49 @@ class ModernSuperElevationUI(tk.Tk):
             indicatorbackground=[("selected", DARK_ACCENT), ("!selected", DARK_FIELD)],
         )
         style.configure("Vertical.TScrollbar", background=DARK_PANEL_ALT, troughcolor=DARK_FIELD, bordercolor=DARK_BORDER)
+        style.configure(
+            "TNotebook",
+            background=DARK_BG,
+            bordercolor=DARK_BORDER,
+            lightcolor=DARK_BORDER,
+            darkcolor=DARK_BORDER,
+            tabmargins=(0, 0, 0, 0),
+        )
+        style.configure(
+            "TNotebook.Tab",
+            background=DARK_PANEL_ALT,
+            foreground=DARK_TEXT,
+            bordercolor=DARK_BORDER,
+            lightcolor=DARK_BORDER,
+            darkcolor=DARK_BORDER,
+            padding=(10, 5),
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", DARK_SELECT), ("active", "#39414a")],
+            foreground=[("selected", "#ffffff"), ("active", DARK_TEXT)],
+        )
 
     def _build_layout(self) -> None:
         root = ttk.Frame(self, padding=10)
         root.grid(row=0, column=0, sticky="nsew")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        root.columnconfigure(0, weight=0)
-        root.columnconfigure(1, weight=1)
-        root.columnconfigure(2, weight=1)
+        if IS_MACOS:
+            root.columnconfigure(0, weight=0, minsize=280)
+            root.columnconfigure(1, weight=2, minsize=460)
+            root.columnconfigure(2, weight=1, minsize=300)
+        else:
+            root.columnconfigure(0, weight=0)
+            root.columnconfigure(1, weight=1)
+            root.columnconfigure(2, weight=1)
         root.rowconfigure(0, weight=1)
+        root.rowconfigure(1, weight=0)
 
         self._build_project_panel(root)
         self._build_input_panel(root)
         self._build_results_panel(root)
+        self._build_output_bar(root)
 
     def _build_project_panel(self, parent: ttk.Frame) -> None:
         panel = ttk.Frame(parent, style="Panel.TFrame", padding=10)
@@ -210,14 +268,27 @@ class ModernSuperElevationUI(tk.Tk):
                 ("Help", self._show_instructions),
             ]
         ):
-            ttk.Button(buttons, text=label, command=command).grid(row=0, column=idx, padx=(0, 6))
+            button_row, button_column = divmod(idx, 2)
+            ttk.Button(buttons, text=label, command=command).grid(
+                row=button_row,
+                column=button_column,
+                sticky="ew",
+                padx=(0, 6),
+                pady=(0, 6 if button_row == 0 else 0),
+            )
+            buttons.columnconfigure(button_column, weight=1)
 
         meta = ttk.Frame(panel, style="Panel.TFrame")
         meta.grid(row=2, column=0, sticky="ew")
         ttk.Label(meta, text="Project name", style="Panel.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 4))
-        ttk.Entry(meta, textvariable=self.vars["project_name"], width=30).grid(row=1, column=0, sticky="ew", pady=(0, 8))
+        project_entry_width = 24 if IS_MACOS else 30
+        ttk.Entry(meta, textvariable=self.vars["project_name"], width=project_entry_width).grid(
+            row=1, column=0, sticky="ew", pady=(0, 8)
+        )
         ttk.Label(meta, text="Route name", style="Panel.TLabel").grid(row=2, column=0, sticky="w", pady=(0, 4))
-        ttk.Entry(meta, textvariable=self.vars["route_name"], width=30).grid(row=3, column=0, sticky="ew", pady=(0, 8))
+        ttk.Entry(meta, textvariable=self.vars["route_name"], width=project_entry_width).grid(
+            row=3, column=0, sticky="ew", pady=(0, 8)
+        )
         ttk.Button(meta, text="Select LandXML", command=self._select_landxml).grid(row=4, column=0, sticky="ew", pady=(0, 4))
         ttk.Button(meta, text="Add All LandXML Curves", command=self._add_all_landxml_curves).grid(
             row=5, column=0, sticky="ew", pady=(0, 4)
@@ -230,8 +301,8 @@ class ModernSuperElevationUI(tk.Tk):
 
         self.curve_listbox = tk.Listbox(
             panel,
-            width=38,
-            height=18,
+            width=(22 if IS_MACOS else 30),
+            height=12,
             activestyle="dotbox",
             background=DARK_FIELD,
             foreground=DARK_TEXT,
@@ -247,30 +318,13 @@ class ModernSuperElevationUI(tk.Tk):
 
         curve_buttons = ttk.Frame(panel, style="Panel.TFrame")
         curve_buttons.grid(row=4, column=0, sticky="ew", pady=(10, 0))
-        ttk.Button(curve_buttons, text="Add Curve", command=self._add_curve).grid(row=0, column=0, sticky="ew", pady=(0, 6))
-        ttk.Button(curve_buttons, text="Update Selected", command=self._update_selected_curve).grid(row=1, column=0, sticky="ew", pady=(0, 6))
-        ttk.Button(curve_buttons, text="Remove Selected", command=self._remove_curve).grid(row=2, column=0, sticky="ew")
-        curve_buttons.columnconfigure(0, weight=1)
-
-        ttk.Checkbutton(
-            panel,
-            text="Auto-open PDF",
-            variable=self.vars["auto_open_pdf"],
-            style="TCheckbutton",
-        ).grid(row=5, column=0, sticky="w", pady=(12, 0))
-        ttk.Button(panel, text="Export PDF", command=self._export_pdf, style="Primary.TButton").grid(
-            row=6, column=0, sticky="ew", pady=(8, 0)
-        )
-        ttk.Button(panel, text="Export ORD CSV", command=self._export_ord_csv).grid(row=7, column=0, sticky="ew", pady=(8, 0))
-        self.overlay_button = ttk.Button(panel, text="Export Overlay DXF", command=self._export_overlay_dxf)
-        self.overlay_button.grid(row=8, column=0, sticky="ew", pady=(8, 0))
-        self.overlay_status = tk.StringVar(value="DXF: select LandXML and calculate a curve")
-        ttk.Label(panel, textvariable=self.overlay_status, style="Muted.Panel.TLabel", wraplength=240, justify="left").grid(
-            row=9, column=0, sticky="w", pady=(4, 0)
-        )
-        ttk.Button(panel, text="Show DXF Issues", command=self._show_overlay_issues).grid(
-            row=10, column=0, sticky="ew", pady=(4, 0)
-        )
+        for column, (label, command) in enumerate(
+            [("Add", self._add_curve), ("Update", self._update_selected_curve), ("Remove", self._remove_curve)]
+        ):
+            ttk.Button(curve_buttons, text=label, command=command, width=7).grid(
+                row=0, column=column, sticky="ew", padx=(0, 6 if column < 2 else 0)
+            )
+            curve_buttons.columnconfigure(column, weight=1)
 
     def _build_input_panel(self, parent: ttk.Frame) -> None:
         shell = ttk.Frame(parent, style="Panel.TFrame", padding=10)
@@ -296,8 +350,6 @@ class ModernSuperElevationUI(tk.Tk):
         row = self._combo(body, row, "Curve direction", "curve_direction", ["left", "right"])
         row = self._field(body, row, "PC station *", "pc")
         row = self._field(body, row, "PT station", "pt")
-        row = self._field(body, row, "Manual station equations (Back=Ahead)", "station_equations")
-        row = self._field(body, row, "Manual internal alignment range (start,end)", "alignment_station_range")
         row = self._combo(body, row, "Design speed (mph) *", "speed", [str(v) for v in range(15, 85, 5)])
         row = self._field(body, row, "Curve radius (ft) *", "radius")
 
@@ -307,13 +359,16 @@ class ModernSuperElevationUI(tk.Tk):
         row = self._field(body, row, "Lane width (ft)", "lane_width")
         row = self._field(body, row, "Lanes rotated", "lanes_rotated")
 
-        row = self._section(body, row, "Overrides")
-        row = self._override_field(body, row, "e (ft/ft)", "e_manual", "e")
-        row = self._override_field(body, row, "Runoff Lr (ft)", "Lr_manual", "Lr")
-        row = self._override_field(body, row, "Runout Lt (ft)", "Lt_manual", "Lt")
-        row = self._override_field(body, row, "Relative gradient", "rel_grad", "rel_grad")
-        row = self._override_field(body, row, "Side friction", "friction", "friction")
-        row = self._override_field(body, row, "Normal crown", "normal_crown", "normal_crown")
+        advanced = ttk.Frame(body, style="Panel.TFrame")
+        advanced.grid(row=row, column=0, columnspan=3, sticky="ew", pady=(12, 4))
+        ttk.Button(advanced, text="Advanced Settings…", command=self._show_advanced_settings).grid(
+            row=0, column=0, sticky="w", padx=(0, 10)
+        )
+        ttk.Label(advanced, textvariable=self.advanced_summary, style="Muted.Panel.TLabel", wraplength=360).grid(
+            row=0, column=1, sticky="w"
+        )
+        advanced.columnconfigure(1, weight=1)
+        row += 1
         row = self._field(body, row, "Curve notes", "curve_notes")
 
         actions = ttk.Frame(body, style="Panel.TFrame")
@@ -324,6 +379,33 @@ class ModernSuperElevationUI(tk.Tk):
         body.columnconfigure(0, weight=0, minsize=124)
         body.columnconfigure(1, weight=0, minsize=168)
         body.columnconfigure(2, weight=1, minsize=170)
+
+    def _build_output_bar(self, parent: ttk.Frame) -> None:
+        bar = ttk.Frame(parent, style="Panel.TFrame", padding=(10, 8))
+        bar.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        bar.columnconfigure(5, weight=1)
+
+        ttk.Checkbutton(
+            bar,
+            text="Auto-open PDF",
+            variable=self.vars["auto_open_pdf"],
+            style="TCheckbutton",
+        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ttk.Button(bar, text="Export PDF", command=self._export_pdf, style="Primary.TButton").grid(
+            row=0, column=1, padx=(0, 6)
+        )
+        ttk.Button(bar, text="Export ORD CSV", command=self._export_ord_csv).grid(row=0, column=2, padx=(0, 6))
+        self.overlay_button = ttk.Button(bar, text="Export Overlay DXF", command=self._export_overlay_dxf)
+        self.overlay_button.grid(row=0, column=3, padx=(0, 6))
+        ttk.Button(bar, text="DXF Issues", command=self._show_overlay_issues).grid(row=0, column=4, padx=(0, 10))
+        self.overlay_status = tk.StringVar(value="DXF: select LandXML and calculate a curve")
+        ttk.Label(
+            bar,
+            textvariable=self.overlay_status,
+            style="Muted.Panel.TLabel",
+            wraplength=420,
+            justify="left",
+        ).grid(row=0, column=5, sticky="ew")
 
     def _build_results_panel(self, parent: ttk.Frame) -> None:
         panel = ttk.Frame(parent, style="Panel.TFrame", padding=10)
@@ -344,8 +426,9 @@ class ModernSuperElevationUI(tk.Tk):
         self.output = tk.Text(
             panel,
             wrap="word",
-            height=18,
-            font=("Segoe UI", 10),
+            width=(35 if IS_MACOS else 42),
+            height=12,
+            font=TEXT_FONT,
             state="disabled",
             background=DARK_FIELD,
             foreground=DARK_TEXT,
@@ -359,17 +442,30 @@ class ModernSuperElevationUI(tk.Tk):
 
         lookup = ttk.Frame(panel, style="Panel.TFrame")
         lookup.grid(row=3, column=0, sticky="ew", pady=(10, 6))
-        ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=14).grid(row=0, column=1, padx=(6, 10))
-        ttk.Label(lookup, text="Super", style="Panel.TLabel").grid(row=0, column=2, sticky="w")
-        ttk.Entry(lookup, textvariable=self.vars["lookup_super"], width=10).grid(row=0, column=3, padx=(6, 10))
-        ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=4)
+        if IS_MACOS:
+            ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=8).grid(
+                row=0, column=1, sticky="ew", padx=(6, 10), pady=(0, 4)
+            )
+            ttk.Label(lookup, text="Super", style="Panel.TLabel").grid(row=1, column=0, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_super"], width=6).grid(
+                row=1, column=1, sticky="ew", padx=(6, 10)
+            )
+            ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=2, rowspan=2)
+            lookup.columnconfigure(1, weight=1)
+        else:
+            ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=14).grid(row=0, column=1, padx=(6, 10))
+            ttk.Label(lookup, text="Super", style="Panel.TLabel").grid(row=0, column=2, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_super"], width=10).grid(row=0, column=3, padx=(6, 10))
+            ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=4)
 
         self.table = tk.Text(
             panel,
             wrap="none",
-            height=13,
-            font=("Consolas", 9),
+            width=(35 if IS_MACOS else 42),
+            height=8,
+            font=MONO_FONT,
             state="disabled",
             background=DARK_FIELD,
             foreground=DARK_TEXT,
@@ -491,7 +587,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             page,
             wrap="word",
             state="normal",
-            font=("Segoe UI", 10),
+            font=TEXT_FONT,
             background=DARK_FIELD,
             foreground=DARK_TEXT,
             insertbackground=DARK_TEXT,
@@ -509,6 +605,224 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         text.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
         notebook.add(page, text=title)
+
+    def _show_advanced_settings(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Advanced Settings")
+        dialog.transient(self)
+        dialog.configure(background=DARK_PANEL)
+        dialog.minsize(520, 460)
+        dialog.geometry("660x580")
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(0, weight=1)
+
+        advanced_keys = (
+            "station_equations",
+            "alignment_station_range",
+            "e_manual",
+            "Lr_manual",
+            "Lt_manual",
+            "rel_grad",
+            "friction",
+            "normal_crown",
+        )
+        temporary = {key: tk.StringVar(value=self.vars[key].get()) for key in advanced_keys}
+
+        shell = ttk.Frame(dialog, style="Panel.TFrame", padding=(14, 14, 8, 8))
+        shell.grid(row=0, column=0, sticky="nsew")
+        shell.columnconfigure(0, weight=1)
+        shell.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(shell, highlightthickness=0, background=DARK_PANEL)
+        scrollbar = ttk.Scrollbar(shell, orient="vertical", command=canvas.yview)
+        body = ttk.Frame(canvas, style="Panel.TFrame")
+        window = canvas.create_window((0, 0), window=body, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
+        body.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        body.columnconfigure(1, weight=1)
+        body.columnconfigure(2, weight=1)
+
+        row = 0
+        ttk.Label(body, text="Advanced Settings", style="Header.TLabel").grid(
+            row=row, column=0, columnspan=3, sticky="w"
+        )
+        row += 1
+        ttk.Label(
+            body,
+            text="Optional values replace automatic criteria. Changes are not used until you select Apply.",
+            style="Muted.Panel.TLabel",
+            wraplength=570,
+            justify="left",
+        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(4, 12))
+        row += 1
+
+        row = self._section(body, row, "Manual Stationing")
+        station_fields = [
+            ("Station equations (Back=Ahead)", "station_equations"),
+            ("Internal alignment range (start,end)", "alignment_station_range"),
+        ]
+        landxml_equations = bool(self._landxml_data and self._landxml_data.station_equations)
+        landxml_range = self._landxml_data is not None
+        for label, key in station_fields:
+            ttk.Label(body, text=label, style="Panel.TLabel").grid(
+                row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            )
+            entry = ttk.Entry(body, textvariable=temporary[key], width=34)
+            entry.grid(row=row, column=1, columnspan=2, sticky="ew", pady=4)
+            if (key == "station_equations" and landxml_equations) or (
+                key == "alignment_station_range" and landxml_range
+            ):
+                entry.configure(state="disabled")
+            row += 1
+        if landxml_equations or landxml_range:
+            ttk.Label(
+                body,
+                text="LandXML stationing is active; affected manual fields are disabled.",
+                style="Muted.Panel.TLabel",
+            ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(2, 8))
+            row += 1
+
+        row = self._section(body, row, "Criteria Overrides")
+        override_fields = [
+            ("e (ft/ft)", "e_manual", "e"),
+            ("Runoff Lr (ft)", "Lr_manual", "Lr"),
+            ("Runout Lt (ft)", "Lt_manual", "Lt"),
+            ("Relative gradient", "rel_grad", "rel_grad"),
+            ("Side friction", "friction", "friction"),
+            ("Normal crown", "normal_crown", "normal_crown"),
+        ]
+        first_override_entry: ttk.Entry | None = None
+        for label, key, computed_key in override_fields:
+            ttk.Label(body, text=label, style="Panel.TLabel").grid(
+                row=row, column=0, sticky="w", padx=(0, 10), pady=4
+            )
+            entry = ttk.Entry(body, textvariable=temporary[key], width=18)
+            entry.grid(row=row, column=1, sticky="ew", pady=4)
+            if first_override_entry is None:
+                first_override_entry = entry
+            ttk.Label(
+                body,
+                text=f"Current: {self.computed_vars[computed_key].get()}",
+                style="Muted.Panel.TLabel",
+            ).grid(row=row, column=2, sticky="w", padx=(10, 0), pady=4)
+            row += 1
+
+        buttons = ttk.Frame(dialog, style="Panel.TFrame", padding=(14, 8, 14, 14))
+        buttons.grid(row=1, column=0, sticky="ew")
+        buttons.columnconfigure(1, weight=1)
+
+        def reset_defaults() -> None:
+            for key in advanced_keys:
+                temporary[key].set("0.02" if key == "normal_crown" else "")
+
+        def apply_changes() -> None:
+            values = {key: variable.get().strip() for key, variable in temporary.items()}
+            try:
+                self._validate_advanced_values(
+                    values,
+                    validate_equations=not landxml_equations,
+                    validate_range=not landxml_range,
+                )
+            except ValueError as exc:
+                messagebox.showerror("Advanced Settings", str(exc), parent=dialog)
+                return
+            self._suspend_auto = True
+            try:
+                for key, value in values.items():
+                    self.vars[key].set(value)
+            finally:
+                self._suspend_auto = False
+            self._update_advanced_summary()
+            dialog.destroy()
+            if self._required_fields_present():
+                self._compute(show_errors=True)
+
+        ttk.Button(buttons, text="Reset Defaults", command=reset_defaults).grid(row=0, column=0, sticky="w")
+        ttk.Button(buttons, text="Cancel", command=dialog.destroy).grid(row=0, column=2, padx=(0, 6))
+        ttk.Button(buttons, text="Apply", command=apply_changes, style="Primary.TButton").grid(row=0, column=3)
+
+        def scroll(event: tk.Event) -> None:
+            if event.delta:
+                canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+
+        dialog.bind("<MouseWheel>", scroll)
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.grab_set()
+        if first_override_entry is not None:
+            first_override_entry.focus_set()
+
+    @staticmethod
+    def _validate_advanced_values(
+        values: dict[str, str], validate_equations: bool = True, validate_range: bool = True
+    ) -> None:
+        numeric_fields = {
+            "e_manual": ("Manual e", True),
+            "Lr_manual": ("Runoff Lr", True),
+            "Lt_manual": ("Runout Lt", True),
+            "rel_grad": ("Relative gradient", False),
+            "friction": ("Side friction", True),
+            "normal_crown": ("Normal crown", False),
+        }
+        for key, (label, allow_zero) in numeric_fields.items():
+            text = values.get(key, "").strip()
+            if not text:
+                continue
+            try:
+                number = float(text)
+            except ValueError as exc:
+                raise ValueError(f"{label} must be a number.") from exc
+            if not math.isfinite(number) or number < 0 or (not allow_zero and number == 0):
+                qualifier = "zero or greater" if allow_zero else "greater than zero"
+                raise ValueError(f"{label} must be {qualifier}.")
+
+        if validate_equations:
+            for entry in values.get("station_equations", "").split(";"):
+                entry = entry.strip()
+                if not entry:
+                    continue
+                if "=" not in entry:
+                    raise ValueError("Station equations must use Back=Ahead format.")
+                back, ahead = (part.strip() for part in entry.split("=", 1))
+                Super.parse_station(back)
+                Super.parse_station(ahead)
+
+        range_text = values.get("alignment_station_range", "").strip()
+        if validate_range and range_text:
+            if "," not in range_text:
+                raise ValueError("Internal alignment range must use Start,End format.")
+            start_text, end_text = (part.strip() for part in range_text.split(",", 1))
+            start = Super.parse_station(start_text)
+            end = Super.parse_station(end_text)
+            if end < start:
+                raise ValueError("Internal alignment range end must be greater than its start.")
+
+    def _update_advanced_summary(self) -> None:
+        active: list[str] = []
+        for key, label in [
+            ("e_manual", "e"),
+            ("Lr_manual", "Lr"),
+            ("Lt_manual", "Lt"),
+            ("rel_grad", "gradient"),
+            ("friction", "friction"),
+        ]:
+            if self.vars[key].get().strip():
+                active.append(label)
+        crown = self.vars["normal_crown"].get().strip()
+        try:
+            custom_crown = bool(crown) and not math.isclose(float(crown), 0.02)
+        except ValueError:
+            custom_crown = bool(crown)
+        if custom_crown:
+            active.append("crown")
+        if self._landxml_data and (self._landxml_data.station_equations or self._landxml_data.station_range()):
+            active.append("LandXML stationing")
+        elif self.vars["station_equations"].get().strip() or self.vars["alignment_station_range"].get().strip():
+            active.append("manual stationing")
+        summary = ", ".join(active) if active else "Automatic defaults"
+        self.advanced_summary.set(f"Advanced: {summary}")
 
     def _section(self, parent: ttk.Frame, row: int, title: str) -> int:
         ttk.Label(parent, text=title, style="Header.TLabel").grid(row=row, column=0, columnspan=3, sticky="w", pady=(10, 4))
@@ -528,14 +842,6 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             combo.configure(state="disabled")
         return row + 1
 
-    def _override_field(self, parent: ttk.Frame, row: int, label: str, key: str, computed_key: str) -> int:
-        ttk.Label(parent, text=label, style="Panel.TLabel").grid(row=row, column=0, sticky="w", padx=(0, 8), pady=3)
-        ttk.Entry(parent, textvariable=self.vars[key], width=16).grid(row=row, column=1, sticky="w", pady=3)
-        ttk.Label(parent, textvariable=self.computed_vars[computed_key], style="Muted.Panel.TLabel").grid(
-            row=row, column=2, sticky="w", padx=(8, 0)
-        )
-        return row + 1
-
     def _setup_auto_handlers(self) -> None:
         for key, var in self.vars.items():
             if key in {"lookup_station", "lookup_super", "auto_open_pdf"}:
@@ -544,6 +850,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self.vars["landxml_curve"].trace_add("write", self._on_landxml_curve_change)
 
     def _on_input_change(self, *_: object) -> None:
+        self._update_advanced_summary()
         if self._suspend_auto:
             return
         if self._auto_job:
@@ -662,7 +969,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             lines.append("")
             lines.append(f"Curve notes: {self.vars['curve_notes'].get().strip()}")
         if lookup_lines:
-            lines.extend([""] + lookup_lines)
+            lines = lookup_lines + [""] + lines
         self._write_text(self.output, "\n".join(lines))
 
         left_rows, right_rows = build_lane_rows(results, meta.get("curve_direction", "left"), station_format)
@@ -695,7 +1002,11 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         reference = float(self.last_results.get("reverse_crown_ft", 0.0))
         if station_text:
             try:
-                station = Super.civil_to_internal_station(Super.parse_station(station_text), self.last_results.get("station_equations"))
+                station = Super.civil_to_internal_station(
+                    Super.parse_station(station_text),
+                    self.last_results.get("station_equations"),
+                    self.last_results.get("alignment_station_range"),
+                )
             except ValueError:
                 messagebox.showerror("Lookup", "Invalid lookup station.")
                 return
@@ -708,20 +1019,58 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
                 )
         if super_text:
             try:
-                raw = float(super_text)
+                target = parse_slope_percent(super_text)
             except ValueError:
-                messagebox.showerror("Lookup", "Invalid lookup super value.")
+                messagebox.showerror("Lookup", "Invalid lookup super value. Enter 2, 2%, or 0.02 for two percent.")
                 return
-            target = raw if abs(raw) > 1.0 else raw * 100.0
             lookup_lines.append(
                 f"Lookup super: {super_exports.format_slope_label(target)} ({super_exports.slope_decimal(target)} ft/ft)"
             )
             for lane in ("left", "right"):
-                station = station_for_slope(points[lane], target, reference)
-                lookup_lines.append(
-                    f"{lane.title()} lane station: {Super.format_result_station(self.last_results, station, True) if station is not None else 'n/a'}"
-                )
+                matches = slope_matches(points[lane], target)
+                lookup_lines.append(f"{lane.title()} lane:")
+                if not matches:
+                    lookup_lines.append("  No match")
+                    continue
+
+                nearest_index = None
+                if station_text:
+                    nearest_index = min(
+                        range(len(matches)),
+                        key=lambda index: self._distance_to_station_range(matches[index], reference),
+                    )
+                point_indexes = [
+                    index for index, (start, end) in enumerate(matches) if abs(end - start) <= 1e-6
+                ]
+                for index, (start, end) in enumerate(matches):
+                    suffix = " (nearest to lookup station)" if index == nearest_index else ""
+                    if end - start > 1e-6:
+                        rate = abs(float(self.last_results.get("e", 0.0))) * 100.0
+                        label = "Full-super range" if abs(abs(target) - rate) <= 1e-6 else "Constant range"
+                        lookup_lines.append(
+                            f"  {label}: {Super.format_result_station(self.last_results, start, True)} to "
+                            f"{Super.format_result_station(self.last_results, end, True)}{suffix}"
+                        )
+                        continue
+                    if len(point_indexes) == 1:
+                        label = "Station"
+                    elif index == point_indexes[0]:
+                        label = "Entering"
+                    elif index == point_indexes[-1]:
+                        label = "Exiting"
+                    else:
+                        label = f"Match {point_indexes.index(index) + 1}"
+                    lookup_lines.append(
+                        f"  {label}: {Super.format_result_station(self.last_results, start, True)}{suffix}"
+                    )
         self._render_results(self.last_results, lookup_lines)
+
+    @staticmethod
+    def _distance_to_station_range(station_range: tuple[float, float], station: float) -> float:
+        start, end = station_range
+        if start <= station <= end:
+            return 0.0
+        return min(abs(station - start), abs(station - end))
 
     def _current_meta(self) -> dict:
         return {
@@ -788,6 +1137,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self._landxml_curve_presets = []
         self.landxml_status.set("LandXML: none")
         self._refresh_landxml_curve_picker()
+        self._update_advanced_summary()
         self._update_overlay_button()
         self._suspend_auto = False
 
@@ -1005,6 +1355,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             self._landxml_curve_presets = []
             self.landxml_status.set("LandXML: none")
             self._refresh_landxml_curve_picker()
+            self._update_advanced_summary()
             self._update_overlay_button()
             return None
         try:
@@ -1014,6 +1365,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             self._landxml_curve_presets = []
             self.landxml_status.set(f"LandXML: failed ({os.path.basename(path)})")
             self._refresh_landxml_curve_picker()
+            self._update_advanced_summary()
             self._update_overlay_button()
             if show_errors:
                 messagebox.showerror("LandXML", f"Failed to load LandXML:\n{exc}")
@@ -1030,6 +1382,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             if not self.vars["route_name"].get().strip():
                 self.vars["route_name"].set(data.alignment_name)
             self._apply_landxml_curve(0)
+        self._update_advanced_summary()
         self._update_overlay_button()
         return data
 
