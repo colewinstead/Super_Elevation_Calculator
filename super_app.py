@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -24,13 +25,28 @@ DARK_MUTED = "#aeb7c2"
 DARK_ACCENT = "#8ab4f8"
 DARK_SELECT = "#2f5f9f"
 
+IS_MACOS = sys.platform == "darwin"
+UI_FONT = (".AppleSystemUIFont", 11) if IS_MACOS else ("Segoe UI", 9)
+HEADER_FONT = (".AppleSystemUIFont", 13, "bold") if IS_MACOS else ("Segoe UI", 12, "bold")
+VALUE_FONT = (".AppleSystemUIFont", 12, "bold") if IS_MACOS else ("Segoe UI", 11, "bold")
+TEXT_FONT = (".AppleSystemUIFont", 11) if IS_MACOS else ("Segoe UI", 10)
+MONO_FONT = ("Menlo", 10) if IS_MACOS else ("Consolas", 9)
+
 
 class ModernSuperElevationUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Superelevation Calculator")
-        self.minsize(1180, 720)
-        self.geometry("1280x780")
+        if IS_MACOS:
+            self.minsize(1080, 680)
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            window_width = min(1280, max(1080, screen_width - 40))
+            window_height = min(780, max(680, screen_height - 80))
+            self.geometry(f"{window_width}x{window_height}")
+        else:
+            self.minsize(1180, 720)
+            self.geometry("1280x780")
         self.last_results: dict | None = None
         self.last_meta: dict = {}
         self.curves: list[dict] = []
@@ -97,7 +113,7 @@ class ModernSuperElevationUI(tk.Tk):
 
     def _configure_style(self) -> None:
         self.configure(background=DARK_BG)
-        self.option_add("*Font", ("Segoe UI", 9))
+        self.option_add("*Font", UI_FONT)
         self.option_add("*Entry.Background", DARK_FIELD)
         self.option_add("*Entry.Foreground", DARK_TEXT)
         self.option_add("*Entry.InsertBackground", DARK_TEXT)
@@ -110,14 +126,17 @@ class ModernSuperElevationUI(tk.Tk):
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure(".", background=DARK_BG, foreground=DARK_TEXT, fieldbackground=DARK_FIELD)
+        base_style = {"background": DARK_BG, "foreground": DARK_TEXT, "fieldbackground": DARK_FIELD}
+        if IS_MACOS:
+            base_style["font"] = UI_FONT
+        style.configure(".", **base_style)
         style.configure("TFrame", background=DARK_BG)
         style.configure("Panel.TFrame", background=DARK_PANEL)
         style.configure("TLabel", background=DARK_BG, foreground=DARK_TEXT)
         style.configure("Panel.TLabel", background=DARK_PANEL, foreground=DARK_TEXT)
         style.configure("Muted.Panel.TLabel", background=DARK_PANEL, foreground=DARK_MUTED)
-        style.configure("Header.TLabel", font=("Segoe UI", 12, "bold"), background=DARK_PANEL, foreground=DARK_TEXT)
-        style.configure("Value.TLabel", font=("Segoe UI", 11, "bold"), background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure("Header.TLabel", font=HEADER_FONT, background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure("Value.TLabel", font=VALUE_FONT, background=DARK_PANEL, foreground=DARK_TEXT)
         style.configure(
             "TEntry",
             fieldbackground=DARK_FIELD,
@@ -179,15 +198,42 @@ class ModernSuperElevationUI(tk.Tk):
             indicatorbackground=[("selected", DARK_ACCENT), ("!selected", DARK_FIELD)],
         )
         style.configure("Vertical.TScrollbar", background=DARK_PANEL_ALT, troughcolor=DARK_FIELD, bordercolor=DARK_BORDER)
+        style.configure(
+            "TNotebook",
+            background=DARK_BG,
+            bordercolor=DARK_BORDER,
+            lightcolor=DARK_BORDER,
+            darkcolor=DARK_BORDER,
+            tabmargins=(0, 0, 0, 0),
+        )
+        style.configure(
+            "TNotebook.Tab",
+            background=DARK_PANEL_ALT,
+            foreground=DARK_TEXT,
+            bordercolor=DARK_BORDER,
+            lightcolor=DARK_BORDER,
+            darkcolor=DARK_BORDER,
+            padding=(10, 5),
+        )
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", DARK_SELECT), ("active", "#39414a")],
+            foreground=[("selected", "#ffffff"), ("active", DARK_TEXT)],
+        )
 
     def _build_layout(self) -> None:
         root = ttk.Frame(self, padding=10)
         root.grid(row=0, column=0, sticky="nsew")
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        root.columnconfigure(0, weight=0)
-        root.columnconfigure(1, weight=1)
-        root.columnconfigure(2, weight=1)
+        if IS_MACOS:
+            root.columnconfigure(0, weight=1, minsize=320)
+            root.columnconfigure(1, weight=1, minsize=630)
+            root.columnconfigure(2, weight=1, minsize=350)
+        else:
+            root.columnconfigure(0, weight=0)
+            root.columnconfigure(1, weight=1)
+            root.columnconfigure(2, weight=1)
         root.rowconfigure(0, weight=1)
 
         self._build_project_panel(root)
@@ -210,7 +256,18 @@ class ModernSuperElevationUI(tk.Tk):
                 ("Help", self._show_instructions),
             ]
         ):
-            ttk.Button(buttons, text=label, command=command).grid(row=0, column=idx, padx=(0, 6))
+            if IS_MACOS:
+                button_row, button_column = divmod(idx, 2)
+                ttk.Button(buttons, text=label, command=command).grid(
+                    row=button_row,
+                    column=button_column,
+                    sticky="ew",
+                    padx=(0, 6),
+                    pady=(0, 6 if button_row == 0 else 0),
+                )
+                buttons.columnconfigure(button_column, weight=1)
+            else:
+                ttk.Button(buttons, text=label, command=command).grid(row=0, column=idx, padx=(0, 6))
 
         meta = ttk.Frame(panel, style="Panel.TFrame")
         meta.grid(row=2, column=0, sticky="ew")
@@ -230,7 +287,7 @@ class ModernSuperElevationUI(tk.Tk):
 
         self.curve_listbox = tk.Listbox(
             panel,
-            width=38,
+            width=(28 if IS_MACOS else 38),
             height=18,
             activestyle="dotbox",
             background=DARK_FIELD,
@@ -344,8 +401,9 @@ class ModernSuperElevationUI(tk.Tk):
         self.output = tk.Text(
             panel,
             wrap="word",
+            width=(35 if IS_MACOS else 80),
             height=18,
-            font=("Segoe UI", 10),
+            font=TEXT_FONT,
             state="disabled",
             background=DARK_FIELD,
             foreground=DARK_TEXT,
@@ -359,17 +417,30 @@ class ModernSuperElevationUI(tk.Tk):
 
         lookup = ttk.Frame(panel, style="Panel.TFrame")
         lookup.grid(row=3, column=0, sticky="ew", pady=(10, 6))
-        ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=14).grid(row=0, column=1, padx=(6, 10))
-        ttk.Label(lookup, text="Super", style="Panel.TLabel").grid(row=0, column=2, sticky="w")
-        ttk.Entry(lookup, textvariable=self.vars["lookup_super"], width=10).grid(row=0, column=3, padx=(6, 10))
-        ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=4)
+        if IS_MACOS:
+            ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=8).grid(
+                row=0, column=1, sticky="ew", padx=(6, 10), pady=(0, 4)
+            )
+            ttk.Label(lookup, text="Super", style="Panel.TLabel").grid(row=1, column=0, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_super"], width=6).grid(
+                row=1, column=1, sticky="ew", padx=(6, 10)
+            )
+            ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=2, rowspan=2)
+            lookup.columnconfigure(1, weight=1)
+        else:
+            ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=14).grid(row=0, column=1, padx=(6, 10))
+            ttk.Label(lookup, text="Super", style="Panel.TLabel").grid(row=0, column=2, sticky="w")
+            ttk.Entry(lookup, textvariable=self.vars["lookup_super"], width=10).grid(row=0, column=3, padx=(6, 10))
+            ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=4)
 
         self.table = tk.Text(
             panel,
             wrap="none",
+            width=(35 if IS_MACOS else 80),
             height=13,
-            font=("Consolas", 9),
+            font=MONO_FONT,
             state="disabled",
             background=DARK_FIELD,
             foreground=DARK_TEXT,
@@ -491,7 +562,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             page,
             wrap="word",
             state="normal",
-            font=("Segoe UI", 10),
+            font=TEXT_FONT,
             background=DARK_FIELD,
             foreground=DARK_TEXT,
             insertbackground=DARK_TEXT,
