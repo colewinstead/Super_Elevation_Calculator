@@ -105,7 +105,8 @@ class ModernSuperElevationUI(tk.Tk):
         self._build_layout()
         self._setup_auto_handlers()
         self._update_overlay_button()
-        self.after_idle(self._maximize_window)
+        if IS_MACOS:
+            self.after_idle(self._maximize_window)
 
     def _maximize_window(self) -> None:
         """Open maximized so all controls remain available on launch."""
