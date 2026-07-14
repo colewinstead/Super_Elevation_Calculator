@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 import Super
+from super_app import ModernSuperElevationUI
 import super_pdf
 import super_project
 from super_lane import (
@@ -104,6 +105,35 @@ class SuperRevampTests(unittest.TestCase):
                 Super.parse_station("5+50"), results["station_equations"], results["alignment_station_range"]
             ),
             1050.0,
+        )
+
+    def test_advanced_settings_validation_accepts_supported_values(self):
+        ModernSuperElevationUI._validate_advanced_values(
+            {
+                "station_equations": "15+43.52=12+33.15;20+00=18+50",
+                "alignment_station_range": "14+17.36,15+70.52",
+                "e_manual": "0.06",
+                "Lr_manual": "180",
+                "Lt_manual": "60",
+                "rel_grad": "0.005",
+                "friction": "0.03",
+                "normal_crown": "0.02",
+            }
+        )
+
+    def test_advanced_settings_validation_rejects_invalid_values(self):
+        with self.assertRaisesRegex(ValueError, "Relative gradient must be greater than zero"):
+            ModernSuperElevationUI._validate_advanced_values({"rel_grad": "0"})
+        with self.assertRaisesRegex(ValueError, "Station equations must use Back=Ahead format"):
+            ModernSuperElevationUI._validate_advanced_values({"station_equations": "15+00 to 12+00"})
+        with self.assertRaisesRegex(ValueError, "range end must be greater"):
+            ModernSuperElevationUI._validate_advanced_values({"alignment_station_range": "20+00,10+00"})
+
+    def test_landxml_stationing_skips_hidden_manual_validation(self):
+        ModernSuperElevationUI._validate_advanced_values(
+            {"station_equations": "unused invalid value", "alignment_station_range": "also unused"},
+            validate_equations=False,
+            validate_range=False,
         )
 
     def test_stamp_selection_preserved(self):
