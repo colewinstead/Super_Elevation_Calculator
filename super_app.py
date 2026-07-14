@@ -46,11 +46,14 @@ class ModernSuperElevationUI(tk.Tk):
             window_height = min(780, max(680, screen_height - 80))
             self.geometry(f"{window_width}x{window_height}")
         else:
-            self.minsize(960, 600)
+            self.minsize(900, 560)
             screen_width = self.winfo_screenwidth()
             screen_height = self.winfo_screenheight()
-            window_width = min(1280, max(960, screen_width - 40))
-            window_height = min(780, max(600, screen_height - 80))
+            dpi_scale = max(1.0, float(self.tk.call("tk", "scaling")) / (96.0 / 72.0))
+            usable_width = int((screen_width - 80) / dpi_scale)
+            usable_height = int((screen_height - 100) / dpi_scale)
+            window_width = min(1280, max(900, usable_width))
+            window_height = min(780, max(560, usable_height))
             self.geometry(f"{window_width}x{window_height}")
         self.last_results: dict | None = None
         self.last_meta: dict = {}
