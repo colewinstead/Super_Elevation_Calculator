@@ -97,14 +97,21 @@ class PilotReadinessTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as tmpdir:
                 os.environ["SUPERELEVATION_LOG_DIR"] = tmpdir
                 try:
-                    raise RuntimeError("synthetic failure")
-                except RuntimeError as exc:
-                    path = app_logging.record_exception("test_operation", exc)
-                for handler in logger.handlers:
-                    handler.flush()
-                content = path.read_text(encoding="utf-8")
-                self.assertIn("operation=test_operation", content)
-                self.assertIn("RuntimeError", content)
+                    try:
+                        raise RuntimeError("synthetic failure")
+                    except RuntimeError as exc:
+                        path = app_logging.record_exception("test_operation", exc)
+                    for handler in logger.handlers:
+                        handler.flush()
+                    content = path.read_text(encoding="utf-8")
+                    self.assertIn("operation=test_operation", content)
+                    self.assertIn("RuntimeError", content)
+                finally:
+                    # Windows will not delete the temporary log while its
+                    # RotatingFileHandler still has the file open.
+                    for handler in list(logger.handlers):
+                        logger.removeHandler(handler)
+                        handler.close()
         finally:
             for handler in list(logger.handlers):
                 logger.removeHandler(handler)
