@@ -8,6 +8,7 @@ import sys
 from typing import Iterable
 
 import Super
+from app_info import APP_VERSION
 from super_lane import build_lane_rows
 
 
@@ -90,6 +91,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
 
+    curve_list = list(curves)
     diagram_b64, mdot_b64, stantec_b64, _ = _asset_constants()
     diagram_bytes = _decode_asset(diagram_b64)
     mdot_bytes = _decode_asset(mdot_b64)
@@ -97,6 +99,16 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
     stamps = stamp_images()
 
     c = canvas.Canvas(path, pagesize=letter)
+    c.setTitle(f"Superelevation Calculation Report - Application {APP_VERSION}")
+    c.setAuthor("Superelevation Calculator")
+    c.setSubject("Superelevation report; calculation engine and criteria are recorded on each curve page")
+    engine_versions = sorted(
+        {
+            str((curve.get("results") or {}).get("calculation_metadata", {}).get("engine_version") or "legacy-unversioned")
+            for curve in curve_list
+        }
+    )
+    c.setKeywords(f"application={APP_VERSION}; calculation_engines={','.join(engine_versions)}")
     width, height = letter
 
     def draw_wrapped_text(
@@ -155,11 +167,16 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
             y = draw_wrapped_text(str(row["note"]), x_positions[3] + 3, y, col_widths[3] - 6, row_height)
         return y - 0.12 * inch
 
-    curve_list = list(curves)
     for idx, curve in enumerate(curve_list):
         if idx > 0:
             c.showPage()
         results = curve.get("results") or {}
+        calculation_metadata = results.get("calculation_metadata", {}) or {}
+        engine_version = calculation_metadata.get("engine_version") or "legacy-unversioned"
+        criteria = calculation_metadata.get("criteria") or {
+            "profile_id": "legacy-unversioned",
+            "source_status": "SOURCE UNKNOWN: recalculate only after reviewing current criteria",
+        }
         meta = curve.get("meta", {}) or {}
         notes = curve.get("notes", "")
         inputs = results.get("inputs", {}) or {}
@@ -185,6 +202,16 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         c.setFont("Helvetica-Bold", 14)
         c.drawString(left, y, "Superelevation Transition Summary")
         y -= 0.23 * inch
+        c.setFont("Helvetica", 8)
+        c.drawString(
+            left,
+            y,
+            f"Application {APP_VERSION} | Calculation engine {engine_version} | Criteria {criteria['profile_id']}",
+        )
+        y -= 0.13 * inch
+        c.setFont("Helvetica-Bold", 7)
+        c.drawString(left, y, criteria["source_status"])
+        y -= 0.13 * inch
         c.setFont("Helvetica", 8)
         c.drawString(left, y, f"Alignment: {meta.get('alignment_name', 'n/a')}")
         y -= 0.13 * inch

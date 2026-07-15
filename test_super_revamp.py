@@ -144,7 +144,7 @@ class SuperRevampTests(unittest.TestCase):
         )
         self.assertEqual(super_pdf.select_stamps(local), ["SE-1"])
 
-    def test_project_v1_loads_and_saves_v2(self):
+    def test_project_v1_loads_and_saves_current_schema(self):
         data = {
             "version": 1,
             "vars": {"pc": "10+00"},
@@ -154,7 +154,9 @@ class SuperRevampTests(unittest.TestCase):
             path = Path(tmpdir) / "project.json"
             super_project.save_project(path, data)
             loaded = super_project.load_project(path)
-        self.assertEqual(loaded["version"], 2)
+        self.assertEqual(loaded["version"], super_project.PROJECT_VERSION)
+        self.assertEqual(loaded["source_version"], super_project.PROJECT_VERSION)
+        self.assertEqual(loaded["calculation_engine_version"], "legacy-unversioned")
         self.assertEqual(len(loaded["curves"]), 1)
 
 

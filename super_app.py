@@ -4,9 +4,12 @@ import math
 import os
 import sys
 import tkinter as tk
+import xml.etree.ElementTree as ET
 from tkinter import filedialog, messagebox, ttk
 
 import Super
+from app_info import APP_VERSION, version_label
+import app_logging
 import super_batch
 import super_dxf
 import super_exports
@@ -37,7 +40,8 @@ MONO_FONT = ("Menlo", 10) if IS_MACOS else ("Consolas", 9)
 class ModernSuperElevationUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Superelevation Calculator")
+        app_logging.configure_logging()
+        self.title(version_label())
         if IS_MACOS:
             self.minsize(1080, 680)
             screen_width = self.winfo_screenwidth()
@@ -110,6 +114,35 @@ class ModernSuperElevationUI(tk.Tk):
         self._update_overlay_button()
         if IS_MACOS:
             self.after_idle(self._maximize_window)
+
+    def report_callback_exception(self, exc_type: type[BaseException], exc: BaseException, tb: object) -> None:
+        """Log otherwise-unhandled Tk callbacks and give the user a support path."""
+        path = app_logging.record_uncaught_exception(exc_type, exc, tb)
+        open_logs = messagebox.askyesno(
+            "Unexpected Error",
+            "The application encountered an unexpected error. Your project files were not sent anywhere.\n\n"
+            f"Details were written to:\n{path}\n\nOpen the log folder now?",
+            parent=self,
+        )
+        if open_logs:
+            try:
+                app_logging.open_log_directory()
+            except Exception:
+                pass
+
+    def _show_operation_error(self, title: str, operation: str, exc: BaseException, path: str | None = None) -> None:
+        log_file = app_logging.record_exception(operation, exc)
+        message = app_logging.friendly_error(operation, exc, path)
+        open_logs = messagebox.askyesno(
+            title,
+            f"{message}\n\nTroubleshooting details were written to:\n{log_file}\n\nOpen the log folder now?",
+            parent=self,
+        )
+        if open_logs:
+            try:
+                app_logging.open_log_directory()
+            except Exception as open_exc:
+                app_logging.record_exception("open_log_directory", open_exc)
 
     def _maximize_window(self) -> None:
         """Open maximized so all controls remain available on launch."""
@@ -1142,8 +1175,12 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self._suspend_auto = False
 
     def _project_payload(self) -> dict:
+        engine_version, project_criteria = super_project.calculation_provenance(self.curves, self.last_results)
         return {
             "version": super_project.PROJECT_VERSION,
+            "application_version": APP_VERSION,
+            "calculation_engine_version": engine_version,
+            "criteria": project_criteria,
             "vars": self._collect_vars(),
             "curves": self.curves,
             "last_results": self.last_results,
@@ -1162,8 +1199,8 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             return
         try:
             super_project.save_project(path, self._project_payload())
-        except OSError as exc:
-            messagebox.showerror("Save Project", f"Failed to save project:\n{exc}")
+        except (OSError, ValueError) as exc:
+            self._show_operation_error("Save Project", "project_save", exc, path)
             return
         self.project_path = path
         messagebox.showinfo("Save Project", f"Saved project to:\n{os.path.basename(path)}")
@@ -1174,8 +1211,8 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             return
         try:
             data = super_project.load_project(path)
-        except Exception as exc:
-            messagebox.showerror("Load Project", f"Failed to load project:\n{exc}")
+        except (OSError, ValueError) as exc:
+            self._show_operation_error("Load Project", "project_load", exc, path)
             return
         self._apply_project(data)
         self.project_path = path
@@ -1360,7 +1397,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             return None
         try:
             data = super_landxml.load_landxml(path)
-        except Exception as exc:
+        except (OSError, ValueError, ET.ParseError) as exc:
             self._landxml_data = None
             self._landxml_curve_presets = []
             self.landxml_status.set(f"LandXML: failed ({os.path.basename(path)})")
@@ -1368,7 +1405,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             self._update_advanced_summary()
             self._update_overlay_button()
             if show_errors:
-                messagebox.showerror("LandXML", f"Failed to load LandXML:\n{exc}")
+                self._show_operation_error("LandXML", "landxml", exc, path)
             return None
         self._landxml_data = data
         self._landxml_curve_presets = data.curve_records()
@@ -1483,10 +1520,10 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         try:
             with open(path, "w", encoding="utf-8", newline="") as handle:
                 warnings = super_exports.write_ord_csv(handle, curves)
+            self._write_warning_report(path, warnings, "ord_csv")
         except Exception as exc:
-            messagebox.showerror("Export ORD CSV", f"Failed to export ORD CSV:\n{exc}")
+            self._show_operation_error("Export ORD CSV", "csv_export", exc, path)
             return
-        self._write_warning_report(path, warnings, "ord_csv")
         messagebox.showinfo("Export ORD CSV", f"Saved ORD CSV to:\n{os.path.basename(path)}")
 
     def _export_detail_dxf(self) -> None:
@@ -1499,10 +1536,10 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             return
         try:
             warnings = super_dxf.export_detail_dxf(path, curves)
+            self._write_warning_report(path, warnings, "detail_dxf")
         except Exception as exc:
-            messagebox.showerror("Export Detail DXF", f"Failed to export detail DXF:\n{exc}")
+            self._show_operation_error("Export Detail DXF", "detail_dxf_export", exc, path)
             return
-        self._write_warning_report(path, warnings, "detail_dxf")
         messagebox.showinfo("Export Detail DXF", f"Saved detail DXF to:\n{os.path.basename(path)}")
 
     def _export_overlay_dxf(self) -> None:
@@ -1527,10 +1564,10 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             return
         try:
             warnings = super_dxf.export_overlay_dxf(path, curves, data, coordinate_config)
+            self._write_warning_report(path, warnings, "overlay_dxf")
         except Exception as exc:
-            messagebox.showerror("Export Overlay DXF", f"Failed to export overlay DXF:\n{exc}")
+            self._show_operation_error("Export Overlay DXF", "overlay_dxf_export", exc, path)
             return
-        self._write_warning_report(path, warnings, "overlay_dxf")
         messagebox.showinfo("Export Overlay DXF", f"Saved overlay DXF to:\n{os.path.basename(path)}")
 
     def _ask_overlay_coordinate_systems(self) -> dict | None:
@@ -1586,11 +1623,11 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             return
         try:
             super_pdf.export_pdf(path, curves)
-        except ImportError:
-            messagebox.showerror("Missing Dependency", "ReportLab is required for PDF export.")
+        except ImportError as exc:
+            self._show_operation_error("Missing Dependency", "pdf_export", exc, path)
             return
         except Exception as exc:
-            messagebox.showerror("Export PDF", f"Failed to export PDF:\n{exc}")
+            self._show_operation_error("Export PDF", "pdf_export", exc, path)
             return
         messagebox.showinfo("Export PDF", f"Saved PDF to:\n{os.path.basename(path)}")
         if self.vars["auto_open_pdf"].get():
@@ -1601,5 +1638,6 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
 
 
 if __name__ == "__main__":
+    app_logging.configure_logging()
     app = ModernSuperElevationUI()
     app.mainloop()
