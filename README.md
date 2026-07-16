@@ -198,7 +198,17 @@ To also build the optional per-user installer, install Inno Setup 6 and run:
 .\scripts\build_windows.ps1 -BuildInstaller
 ```
 
+The build script ignores nonfunctional Microsoft Store Python aliases and also checks Inno Setup's standard per-user and Program Files locations. For nonstandard installations, pass explicit paths:
+
+```powershell
+.\scripts\build_windows.ps1 -BuildInstaller `
+    -PythonPath "C:\Path\To\python.exe" `
+    -InnoSetupCompiler "C:\Path\To\ISCC.exe"
+```
+
 The installer definition is in `packaging\Superelevation.iss`. A Windows build, installer install/uninstall, code signature, and SmartScreen behavior must be validated on the pilot Windows images before distribution.
+
+Before paid distribution, review the [current Inno Setup commercial-license guidance](https://jrsoftware.org/isorder.php) and record the licensing decision with the other third-party notices.
 
 ## Release procedure
 

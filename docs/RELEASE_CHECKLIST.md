@@ -5,6 +5,7 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 ## Release authorization
 
 - [ ] Commercial license/EULA and pilot support terms are approved for the intended recipients.
+- [ ] Third-party build and runtime licensing, including the current Inno Setup commercial-license guidance, has been reviewed and recorded.
 - [ ] A qualified roadway engineer has approved the criteria/source traceability matrix and golden calculations for every enabled calculation path.
 - [ ] Known limitations, supported inputs, and required independent checks are accepted by the pilot owner.
 - [ ] `app_info.py` contains the intended semantic application version and calculation-engine version.
