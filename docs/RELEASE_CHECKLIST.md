@@ -22,8 +22,9 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 
 - [ ] Build on the supported clean Windows x64 image with `scripts\build_windows.ps1 -BuildInstaller`.
 - [ ] Confirm EXE ProductVersion/FileVersion matches `app_info.py`.
-- [ ] Sign the EXE and installer with the approved Authenticode certificate and timestamp service.
+- [ ] Sign the EXE and installer with the approved Authenticode certificate; record whether the pilot self-signed certificate or a public certificate was used.
 - [ ] Verify both signatures after signing and regenerate SHA-256 checksums for the signed artifacts.
+- [ ] For a self-signed pilot, confirm each recipient independently verifies the public-certificate thumbprint before trusting it; never distribute the private key or a PFX.
 - [ ] Scan release artifacts using the organization's approved malware controls.
 - [ ] Install and uninstall using a standard (non-administrator) pilot account.
 - [ ] Confirm Windows Defender/SmartScreen behavior is acceptable on each pilot Windows version.

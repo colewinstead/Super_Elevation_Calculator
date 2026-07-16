@@ -198,6 +198,39 @@ To also build the optional per-user installer, install Inno Setup 6 and run:
 .\scripts\build_windows.ps1 -BuildInstaller
 ```
 
+### Free pilot signing and checksums
+
+For the controlled pilot only, create a self-signed code-signing certificate on the private Windows build computer:
+
+```powershell
+.\scripts\new_pilot_signing_certificate.ps1
+```
+
+The private keys stay in that Windows user's certificate store. The script exports only the public pilot root and public signing certificates to `dist`. Do not upload or distribute a `.pfx` file or any private-key export.
+
+Build and sign the executable and installer, then generate SHA-256 checksums over the final signed files:
+
+```powershell
+.\scripts\build_windows.ps1 -BuildInstaller -Sign
+```
+
+Verify every checksum, both Authenticode signatures, and the private certificate chain without changing the computer's trust settings:
+
+```powershell
+.\scripts\verify_windows_release.ps1
+```
+
+Self-signing does not create public Windows reputation. A pilot engineer must independently confirm the public certificate thumbprints with Cole Winstead and explicitly trust them for their Windows account. This command must be run in a normal interactive PowerShell window so Windows can display its root-trust confirmation; it cannot be completed through a headless SSH session:
+
+```powershell
+.\scripts\install_pilot_public_certificate.ps1 `
+    -RootCertificatePath .\Cole-Winstead-Pilot-Root.cer `
+    -SigningCertificatePath .\Cole-Winstead-Pilot-Code-Signing.cer `
+    -AcknowledgePilotTrust
+```
+
+The engineer should then compare the installer's SHA-256 value with `SHA256SUMS.txt`. Browser or Microsoft Defender SmartScreen warnings may still appear because this is not a publicly trusted commercial certificate. Customer IT approval is recommended before installing a private trust certificate.
+
 The build script ignores nonfunctional Microsoft Store Python aliases and also checks Inno Setup's standard per-user and Program Files locations. For nonstandard installations, pass explicit paths:
 
 ```powershell
@@ -206,7 +239,7 @@ The build script ignores nonfunctional Microsoft Store Python aliases and also c
     -InnoSetupCompiler "C:\Path\To\ISCC.exe"
 ```
 
-The installer definition is in `packaging\Superelevation.iss`. A Windows build, installer install/uninstall, code signature, and SmartScreen behavior must be validated on the pilot Windows images before distribution.
+The installer definition is in `packaging\Superelevation.iss`. A Windows build, installer install/uninstall, code signature, checksum, and SmartScreen behavior must be validated on the pilot Windows images before distribution.
 
 Before paid distribution, review the [current Inno Setup commercial-license guidance](https://jrsoftware.org/isorder.php) and record the licensing decision with the other third-party notices.
 

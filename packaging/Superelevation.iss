@@ -6,7 +6,7 @@
 AppId={{519538DB-65A7-48DF-9AC5-2EC0F26071FB}
 AppName=Superelevation Calculator
 AppVersion={#MyAppVersion}
-AppPublisher=Superelevation Calculator
+AppPublisher=Cole Winstead
 DefaultDirName={autopf}\Superelevation Calculator
 DefaultGroupName=Superelevation Calculator
 OutputDir=..\dist

@@ -142,6 +142,38 @@ class PilotReadinessTests(unittest.TestCase):
             content = path.read_text(encoding="utf-8")
         self.assertIn(f"StringStruct('ProductVersion', '{APP_VERSION}')", content)
 
+    def test_windows_build_signs_before_final_checksums(self):
+        root = Path(__file__).parent
+        script = (root / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
+        exe_sign = script.index('Set-ReleaseSignature -Path "dist/SuperElevation.exe"')
+        installer_sign = script.index("Set-ReleaseSignature -Path $InstallerPath")
+        checksum = script.index("Get-FileHash -LiteralPath $ReleaseFile.FullName")
+        self.assertLess(exe_sign, installer_sign)
+        self.assertLess(installer_sign, checksum)
+        self.assertIn('Where-Object { $_.Name -ne "SHA256SUMS.txt" }', script)
+
+    def test_pilot_certificate_release_contains_no_private_key_export(self):
+        root = Path(__file__).parent
+        create_script = (root / "scripts" / "new_pilot_signing_certificate.ps1").read_text(encoding="utf-8")
+        build_script = (root / "scripts" / "build_windows.ps1").read_text(encoding="utf-8")
+        trust_script = (root / "scripts" / "install_pilot_public_certificate.ps1").read_text(encoding="utf-8")
+        self.assertIn("Export-Certificate", create_script)
+        self.assertIn("Export-Certificate", build_script)
+        self.assertIn("Pilot-Root.cer", create_script)
+        self.assertIn("Pilot-Root.cer", build_script)
+        self.assertNotIn("Export-PfxCertificate", create_script)
+        self.assertNotIn("Export-PfxCertificate", build_script)
+        self.assertIn("AcknowledgePilotTrust", trust_script)
+        self.assertIn("Cert:\\CurrentUser\\TrustedPublisher", trust_script)
+        self.assertIn("Cert:\\CurrentUser\\Root", trust_script)
+
+    def test_release_verifier_checks_hashes_signatures_and_private_chain(self):
+        script = (Path(__file__).parent / "scripts" / "verify_windows_release.ps1").read_text(encoding="utf-8")
+        self.assertIn("Get-FileHash", script)
+        self.assertIn("Get-AuthenticodeSignature", script)
+        self.assertIn("X509Chain", script)
+        self.assertIn("Pilot root thumbprint", script)
+
     def test_end_to_end_file_workflows_with_synthetic_fixture(self):
         landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
         curves = super_batch.build_curves_from_presets(

@@ -2,8 +2,12 @@
 param(
     [switch]$SkipInstall,
     [switch]$BuildInstaller,
+    [switch]$Sign,
     [string]$PythonPath,
-    [string]$InnoSetupCompiler
+    [string]$InnoSetupCompiler,
+    [string]$CertificateThumbprint,
+    [string]$PublisherName = "Cole Winstead",
+    [string]$TimestampServer
 )
 
 $ErrorActionPreference = "Stop"
@@ -83,6 +87,56 @@ function Invoke-Checked {
     }
 }
 
+function Resolve-CodeSigningCertificate {
+    $Certificates = Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
+        Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) }
+
+    if ($CertificateThumbprint) {
+        $NormalizedThumbprint = $CertificateThumbprint.Replace(" ", "").ToUpperInvariant()
+        $Certificate = $Certificates |
+            Where-Object { $_.Thumbprint -eq $NormalizedThumbprint } |
+            Select-Object -First 1
+    } else {
+        $Certificate = $Certificates |
+            Where-Object {
+                $_.Subject -eq "CN=$PublisherName" -and
+                $_.Issuer -eq "CN=$PublisherName Pilot Root CA"
+            } |
+            Sort-Object NotAfter -Descending |
+            Select-Object -First 1
+    }
+
+    if (-not $Certificate) {
+        throw "No usable code-signing certificate was found for '$PublisherName'. Run scripts\new_pilot_signing_certificate.ps1 first, or pass -CertificateThumbprint."
+    }
+    return $Certificate
+}
+
+function Set-ReleaseSignature {
+    param(
+        [string]$Path,
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate
+    )
+
+    $Parameters = @{
+        FilePath = $Path
+        Certificate = $Certificate
+        HashAlgorithm = "SHA256"
+    }
+    if ($TimestampServer) {
+        $Parameters.TimestampServer = $TimestampServer
+    }
+
+    Set-AuthenticodeSignature @Parameters | Out-Null
+    $Signature = Get-AuthenticodeSignature -FilePath $Path
+    if (-not $Signature.SignerCertificate -or
+        $Signature.SignerCertificate.Thumbprint -ne $Certificate.Thumbprint -or
+        $Signature.SignatureType -ne "Authenticode") {
+        throw "Authenticode signing verification failed for $Path. Status: $($Signature.StatusMessage)"
+    }
+    Write-Host "Signed $Path with $($Certificate.Subject) ($($Certificate.Thumbprint))."
+}
+
 if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
     throw "The Windows executable must be built on Windows."
 }
@@ -98,8 +152,11 @@ Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
 Invoke-Checked $PythonExe @("scripts/generate_windows_version_info.py", "build/windows_version_info.txt")
 Invoke-Checked $PythonExe @("-m", "PyInstaller", "--clean", "--noconfirm", "SuperElevation.spec")
 
-$Hash = Get-FileHash dist/SuperElevation.exe -Algorithm SHA256
-"$($Hash.Hash.ToLower())  SuperElevation.exe" | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+$SigningCertificate = $null
+if ($Sign) {
+    $SigningCertificate = Resolve-CodeSigningCertificate
+    Set-ReleaseSignature -Path "dist/SuperElevation.exe" -Certificate $SigningCertificate
+}
 
 if ($BuildInstaller) {
     $Version = & $PythonExe -c "from app_info import APP_VERSION; print(APP_VERSION)"
@@ -109,6 +166,38 @@ if ($BuildInstaller) {
     $Iscc = Resolve-InnoSetupCompiler
     Write-Host "Using Inno Setup: $Iscc"
     Invoke-Checked $Iscc @("/DMyAppVersion=$($Version.Trim())", "packaging/Superelevation.iss")
+
+    if ($Sign) {
+        $InstallerPath = "dist/SuperelevationCalculator-$($Version.Trim())-Setup.exe"
+        Set-ReleaseSignature -Path $InstallerPath -Certificate $SigningCertificate
+    }
 }
 
-Write-Host "Built dist/SuperElevation.exe and dist/SHA256SUMS.txt"
+if ($Sign) {
+    $RootCertificate = Get-ChildItem Cert:\CurrentUser\My |
+        Where-Object { $_.Subject -eq "CN=$PublisherName Pilot Root CA" } |
+        Sort-Object NotAfter -Descending |
+        Select-Object -First 1
+    if (-not $RootCertificate) {
+        throw "The pilot root certificate for '$PublisherName' was not found. Run scripts\new_pilot_signing_certificate.ps1 first."
+    }
+    Export-Certificate `
+        -Cert $SigningCertificate `
+        -FilePath "dist/Cole-Winstead-Pilot-Code-Signing.cer" `
+        -Force | Out-Null
+    Export-Certificate `
+        -Cert $RootCertificate `
+        -FilePath "dist/Cole-Winstead-Pilot-Root.cer" `
+        -Force | Out-Null
+}
+
+$ReleaseFiles = Get-ChildItem -Path dist -File |
+    Where-Object { $_.Name -ne "SHA256SUMS.txt" } |
+    Sort-Object Name
+$ChecksumLines = foreach ($ReleaseFile in $ReleaseFiles) {
+    $Hash = Get-FileHash -LiteralPath $ReleaseFile.FullName -Algorithm SHA256
+    "$($Hash.Hash.ToLower())  $($ReleaseFile.Name)"
+}
+$ChecksumLines | Set-Content -Encoding ascii dist/SHA256SUMS.txt
+
+Write-Host "Built release files and dist/SHA256SUMS.txt"
