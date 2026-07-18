@@ -45,3 +45,11 @@ test("debounces automatic calculations when required inputs are ready", async ()
   assert.match(source, /Calculates automatically/);
   assert.match(source, /setTimeout\(async \(\) =>/);
 });
+
+test("opens a save picker for exports with a download fallback", async () => {
+  const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /showSaveFilePicker/);
+  assert.match(source, /suggestedName: name/);
+  assert.match(source, /createWritable/);
+  assert.match(source, /if \(!picker\) return "download"/);
+});

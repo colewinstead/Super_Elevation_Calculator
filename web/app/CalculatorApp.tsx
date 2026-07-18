@@ -7,7 +7,17 @@ import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "
 
 type Dict = Record<string, any>;
 type RuntimeState = "loading" | "ready" | "error";
+type WritableFile = { write(data: Blob): Promise<void>; close(): Promise<void> };
+type SaveFileHandle = { createWritable(): Promise<WritableFile> };
+type SaveTarget = SaveFileHandle | "download";
 const AUTO_CALC_DELAY_MS = 450;
+
+const EXPORT_DETAILS: Record<string, { suffix: string; description: string }> = {
+  export_pdf: { suffix: "-report", description: "PDF calculation report" },
+  export_ord_csv: { suffix: "-ord", description: "OpenRoads superelevation CSV" },
+  export_detail_dxf: { suffix: "-detail", description: "Superelevation detail DXF" },
+  export_overlay_dxf: { suffix: "-overlay", description: "LandXML overlay DXF" },
+};
 
 const INITIAL_INPUTS: Dict = {
   project_name: "",
@@ -43,6 +53,34 @@ function download(name: string, value: string | Uint8Array, type: string) {
   anchor.download = name;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+async function chooseSaveTarget(name: string, type: string, extension: string, description: string): Promise<SaveTarget | null> {
+  const picker = (window as Window & {
+    showSaveFilePicker?: (options: Dict) => Promise<SaveFileHandle>;
+  }).showSaveFilePicker;
+  if (!picker) return "download";
+  try {
+    return await picker.call(window, {
+      suggestedName: name,
+      types: [{ description, accept: { [type]: [`.${extension}`] } }],
+    });
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === "AbortError") return null;
+    if (reason instanceof DOMException && ["SecurityError", "NotAllowedError"].includes(reason.name)) return "download";
+    throw reason;
+  }
+}
+
+async function saveExport(target: SaveTarget, name: string, value: string | Uint8Array, type: string) {
+  if (target === "download") {
+    download(name, value, type);
+    return "downloaded";
+  }
+  const writable = await target.createWritable();
+  await writable.write(new Blob([value as BlobPart], { type }));
+  await writable.close();
+  return "saved";
 }
 
 function cleanName(value: string, fallback: string) {
@@ -385,11 +423,24 @@ export default function CalculatorApp() {
       payload.landxml_source = landxml.source;
       payload.coordinate_config = { source_coordinate_system: sourceCrs, target_coordinate_system: targetCrs };
     }
-    const result = await run("Generating export", () => call(operation, payload));
-    if (!result) return;
-    const content = result.content;
-    download(`${cleanName(inputs.project_name, "superelevation")}.${extension}`, content, mime);
-    setNotice(result.warnings?.length ? `Downloaded with ${result.warnings.length} warning(s): ${result.warnings[0]}` : `Downloaded ${extension.toUpperCase()} export.`);
+    const details = EXPORT_DETAILS[operation] || { suffix: "", description: `${extension.toUpperCase()} export` };
+    const filename = `${cleanName(inputs.project_name, "superelevation")}${details.suffix}.${extension}`;
+    let target: SaveTarget | null;
+    try {
+      target = await chooseSaveTarget(filename, mime, extension, details.description);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      return;
+    }
+    if (!target) return;
+    const outcome = await run("Generating export", async () => {
+      const result = await call(operation, payload);
+      const disposition = await saveExport(target, filename, result.content, mime);
+      return { ...result, disposition };
+    });
+    if (!outcome) return;
+    const action = outcome.disposition === "saved" ? "Saved" : "Downloaded";
+    setNotice(outcome.warnings?.length ? `${action} with ${outcome.warnings.length} warning(s): ${outcome.warnings[0]}` : `${action} ${extension.toUpperCase()} export.`);
   };
 
   const inputValue = (key: string) => {
@@ -473,7 +524,7 @@ export default function CalculatorApp() {
         </section>
       </div>
 
-      <section className="exports panel"><div><p className="step">04</p><h2>Review & export</h2><p>Exports use the same recorded calculation results shown above.</p></div><div className="crs-fields"><label><span>LandXML source CRS</span><select value={sourceCrs} onChange={(e) => setSourceCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label><label><span>Destination CRS</span><select value={targetCrs} onChange={(e) => setTargetCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV</button><button onClick={() => performExport("export_detail_dxf", "dxf", "application/dxf")}>Detail DXF</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF</button></div></section>
+      <section className="exports panel"><div><p className="step">04</p><h2>Review & export</h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-fields"><label><span>LandXML source CRS</span><select value={sourceCrs} onChange={(e) => setSourceCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label><label><span>Destination CRS</span><select value={targetCrs} onChange={(e) => setTargetCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV</button><button onClick={() => performExport("export_detail_dxf", "dxf", "application/dxf")}>Detail DXF</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF</button></div></section>
 
       <footer><p><strong>Engineering aid.</strong> Validate criteria, stationing, coordinate systems, lane naming, and exported geometry against governing standards and the project design file.</p><p>No account · No upload · Browser-only processing</p></footer>
     </main>
