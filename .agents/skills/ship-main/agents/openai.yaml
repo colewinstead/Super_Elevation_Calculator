@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ship Main"
+  short_description: "Publish the latest release to ChatGPT Sites"
+  default_prompt: "Use $ship-main to verify the merged release and publish main to the existing ChatGPT Site."
