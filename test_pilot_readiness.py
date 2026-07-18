@@ -134,8 +134,13 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertIn(f"Application {APP_VERSION}".encode(), content)
         self.assertIn(CALCULATION_ENGINE_VERSION.encode(), content)
 
+    def test_pdf_export_excludes_agency_and_consultant_logos(self):
+        source = (Path(__file__).parent / "super_pdf.py").read_text(encoding="utf-8")
+        self.assertNotIn("MDOT_PNG_B64", source)
+        self.assertNotIn("STANTEC_PNG_B64", source)
+
     def test_windows_version_resource_uses_authoritative_version(self):
-        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 0, 0))
+        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 1, 0))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "version.txt"
             generate(path)
