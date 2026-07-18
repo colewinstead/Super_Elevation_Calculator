@@ -459,6 +459,12 @@ export default function CalculatorApp() {
 
   const result = calculation?.results;
   const lanes = calculation?.lanes || {};
+  const criteria = result?.calculation_metadata?.criteria || {};
+  const applicableDrawings: string[] = criteria.applicable_standard_drawings || [];
+  const criteriaSources: Dict[] = criteria.calculation_sources || [];
+  const applicableLabel = applicableDrawings.length
+    ? applicableDrawings.join(" / ")
+    : "No mapped MDOT standard drawing";
 
   return (
     <main className="app-shell">
@@ -516,9 +522,14 @@ export default function CalculatorApp() {
         </section>
 
         <section className="panel results-panel">
-          <div className="panel-heading"><div><p className="step">03</p><h2>Results</h2></div>{result && <span className="criteria-tag">{result.calculation_metadata?.criteria?.profile_id || "criteria recorded"}</span>}</div>
+          <div className="panel-heading"><div><p className="step">03</p><h2>Results</h2></div>{result && <span className="criteria-tag">MDOT sources recorded</span>}</div>
           {!result ? <div className="results-empty"><div className="road-crown"><i></i><i></i></div><h3>Ready for curve inputs</h3><p>Enter PC, speed, and radius to calculate transition stations and signed lane slopes.</p></div> : <>
             <div className="metric-grid"><article><span>Rate e</span><strong>{Number(result.e || 0).toFixed(4)}</strong><small>{result.e_source || "automatic"}</small></article><article><span>Runoff Lr</span><strong>{Number(result.Lr || 0).toFixed(2)}′</strong><small>{inputs.Lr_manual ? "override" : "automatic"}</small></article><article><span>Runout Lt</span><strong>{Number(result.Lt || 0).toFixed(2)}′</strong><small>{inputs.Lt_manual ? "override" : "automatic"}</small></article></div>
+            <div className="criteria-reference">
+              <p>Applicable drawing</p><strong>{applicableLabel}</strong>
+              <p>Calculation sources</p>
+              <ul>{criteriaSources.map((source: Dict, index: number) => <li key={`${source.component}-${source.reference}-${index}`}><span>{source.component}</span><b>{source.reference}</b>{source.mode === "user_override" && <em>User override</em>}</li>)}</ul>
+            </div>
             <div className="result-tabs"><h3>Lane events</h3><label className="check"><input type="checkbox" checked={inputs.station_format} onChange={(e) => update("station_format", e.target.checked)} /> Station labels</label></div>
             <div className="lane-tables">{(["left", "right"] as const).map((lane) => <div key={lane}><h4>{lane} lane</h4><table><thead><tr><th>Point</th><th>Station</th><th>Slope</th></tr></thead><tbody>{(lanes[lane] || []).map((row: Dict, index: number) => <tr key={index}><td>{row.label}</td><td>{row.station}</td><td className={String(row.slope_label).startsWith("+") ? "positive" : ""}>{row.slope_label}</td></tr>)}</tbody></table></div>)}</div>
             <div className="lookup"><h3>Engineering lookup</h3><div><input aria-label="Lookup station" placeholder="Station" value={lookupStation} onChange={(e) => setLookupStation(e.target.value)} /><input aria-label="Lookup superelevation" placeholder="Super (2%, 2, or 0.02)" value={lookupSlope} onChange={(e) => setLookupSlope(e.target.value)} /><button onClick={performLookup}>Lookup</button></div>{lookupResult && <div className="lookup-output">

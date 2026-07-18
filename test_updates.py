@@ -140,7 +140,39 @@ class UpdateCheckerTests(unittest.TestCase):
         open_tab.assert_called_once_with(update.download_url)
         close_dialog.assert_called_once_with()
 
-    def test_failed_browser_open_leaves_copyable_link_popup_open(self):
+    def test_copy_download_link_uses_clipboard_and_resets_button_label(self):
+        app = super_app.ModernSuperElevationUI.__new__(super_app.ModernSuperElevationUI)
+        app.clipboard_clear = mock.Mock()
+        app.clipboard_append = mock.Mock()
+        app.update_idletasks = mock.Mock()
+        app.after = mock.Mock()
+        button = mock.Mock()
+        button.winfo_exists.return_value = True
+        update = super_updates.UpdateInfo("1.3.0", "1.4.0", "https://example.invalid/update")
+
+        app._copy_update_download(update, mock.sentinel.dialog, button)
+
+        app.clipboard_clear.assert_called_once_with()
+        app.clipboard_append.assert_called_once_with(update.download_url)
+        button.configure.assert_called_once_with(text="Copied")
+        delay, reset = app.after.call_args.args
+        self.assertEqual(delay, 2000)
+        reset()
+        button.configure.assert_called_with(text="Copy Download Link")
+
+    def test_copy_download_link_failure_is_logged_and_explained(self):
+        app = super_app.ModernSuperElevationUI.__new__(super_app.ModernSuperElevationUI)
+        app.clipboard_clear = mock.Mock(side_effect=RuntimeError("clipboard unavailable"))
+        button = mock.Mock()
+        update = super_updates.UpdateInfo("1.3.0", "1.4.0", "https://example.invalid/update")
+        with mock.patch.object(super_app.app_logging, "record_exception") as record_exception:
+            with mock.patch.object(super_app.messagebox, "showerror") as showerror:
+                app._copy_update_download(update, mock.sentinel.dialog, button)
+        record_exception.assert_called_once()
+        showerror.assert_called_once()
+        self.assertIs(showerror.call_args.kwargs["parent"], mock.sentinel.dialog)
+
+    def test_failed_browser_open_leaves_copy_button_popup_open(self):
         app = super_app.ModernSuperElevationUI.__new__(super_app.ModernSuperElevationUI)
         update = super_updates.UpdateInfo("1.3.0", "1.4.0", "https://example.invalid/update")
         close_dialog = mock.Mock()
