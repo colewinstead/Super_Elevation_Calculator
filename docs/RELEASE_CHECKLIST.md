@@ -29,6 +29,14 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 - [ ] Install and uninstall using a standard (non-administrator) pilot account.
 - [ ] Confirm Windows Defender/SmartScreen behavior is acceptable on each pilot Windows version.
 
+## macOS build
+
+- [ ] Build and retain the native Apple Silicon and Intel DMGs from the release workflow.
+- [ ] Confirm the application version and minimum macOS version in each bundle match `app_info.py` and the supported release target.
+- [ ] Verify `SHA256SUMS-macOS.txt` against both downloaded disk images.
+- [ ] Mount each DMG, copy the application into Applications, launch it on macOS 15 or newer, and record the processor architecture used.
+- [ ] Confirm any operating-system installation prompts and the approved first-launch procedure are accurately documented for recipients.
+
 ## Built-application acceptance
 
 - [ ] Launch the installed executable and confirm the displayed version.
@@ -40,6 +48,7 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 - [ ] Export DXF and verify coordinates, units, levels/layers, text style, rotation, and placement in the target DGN.
 - [ ] Save/reload a new project and approved v1/v2 compatibility fixtures; compare calculations and metadata.
 - [ ] Force one failure for each file workflow and confirm the message, rotating log, and Open Log Folder action.
+- [ ] Repeat the approved golden calculation, LandXML, project save/load, PDF, ORD CSV, and DXF checks on each supported macOS architecture before pilot delivery.
 
 ## Browser build acceptance
 
@@ -51,7 +60,7 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 
 ## Delivery and support
 
-- [ ] Publish immutable, versioned EXE/installer/checksum assets and release notes to the approved private delivery channel.
+- [ ] Publish immutable, versioned Windows, macOS, browser, installer, and checksum assets with release notes to the approved delivery channel.
 - [ ] Verify downloaded hashes and signatures on a clean pilot machine.
 - [ ] Provide installation, onboarding, limitations, privacy/log-sharing, backup, update, and rollback instructions.
 - [ ] Record the 3–5 authorized pilot users, their application versions, and the support contact.
