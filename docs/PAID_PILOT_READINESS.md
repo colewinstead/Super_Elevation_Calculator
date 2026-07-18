@@ -1,0 +1,87 @@
+# Paid Pilot Readiness Assessment and Roadmap
+
+## Executive conclusion
+
+The application has a useful modular calculation/export core and a meaningful 44-test baseline, but it is not yet ready to be represented as validated commercial roadway-engineering software. The dominant blocker is engineering traceability: criteria identifiers exist, yet the governing publication, revision, effective date, value provenance, assumptions, and independent golden calculations are not established. Legal terms, a signed/validated Windows release, and real ORD/customer acceptance evidence are also required before money or production reliance is involved.
+
+The changes accompanying this assessment improve identification, diagnostics, compatibility, and build repeatability without altering formulas, lookup values, stationing, ORD mappings, transformations, or engineering outputs. New calculations identify application `0.1.0`, engine `1.0.0`, and criteria profile `mdot-legacy-unverified` with a visible source-verification warning.
+
+## Architecture and evidence reviewed
+
+- `Super.py`: station conversion, formulas, lookup tables, overrides, and formatted results.
+- `super_lane.py`, `super_exports.py`, `super_batch.py`: lane profiles, normalized events, batch calculations, and ORD CSV.
+- `super_landxml.py`: LandXML 1.2 first-alignment parser and line/arc station geometry.
+- `super_dxf.py`, `super_pdf.py`: CAD and report generation.
+- `super_project.py`: JSON persistence and compatibility.
+- `super_app.py`: current Tkinter desktop UI.
+- `super_ui.py`: legacy UI and embedded PNG source-sheet/logo assets used by PDF output.
+- Tests, synthetic LandXML, workflows, PyInstaller spec, requirements, README, SVG, and ORD add-in research.
+
+The pre-change baseline was 44 passing tests on the review host. Embedded base64 assets decoded as valid PNG files; decoding does not establish publication authenticity, revision, copyright permission, or engineering approval.
+
+## Engineering traceability finding
+
+`Super.py` references Table 3-4-A/B/C, Equation 3-4-1, SE-1, SE-2A–E, and SE-3A–B. It also describes some behavior only as “AASHTO-style,” uses a `DEFAULT_FRICTION_SCALE = 0.24`, performs nearest-row and interpolation choices, caps rates for area/speed cases, and accepts manual overrides. The repository does not establish:
+
+- full standard/drawing titles, issuing authority, edition, revision, effective date, page/sheet, or supersession status;
+- a value-by-value transcription review for every embedded table;
+- why the friction scaling and fallback formula are appropriate for each enabled facility/area case;
+- which rounding, interpolation, nearest-row, minimum/maximum, and out-of-range rules are explicitly governed versus implementation assumptions;
+- who may authorize an override, why it was used, or where the approval is recorded;
+- independent hand calculations or agency-approved examples covering every branch;
+- change control requiring engineering approval when criteria or code changes.
+
+Therefore the current criteria cannot yet be called validated or traceable to a governing source. The metadata added in this work intentionally records that fact rather than creating false provenance.
+
+## Phase 1 — reliable paid pilot for 3–5 engineers
+
+Phase 1 contains only work needed to run a controlled, supported pilot. “Block” means it should prevent accepting payment or allowing engineering reliance until complete.
+
+| Item | Why it matters | Risk if omitted | Likely files/modules | Difficulty | Blocks pilot | Recommended implementation approach |
+|:--|:--|:--|:--|:--:|:--:|:--|
+| Engineering criteria traceability and independent validation | Roadway outputs must be reproducible against the governing standard. | Incorrect design decisions, professional-liability exposure, and no defensible calculation record. | `Super.py`, `criteria_info.py`, new controlled criteria matrix and golden fixtures | High | **Yes** | A qualified roadway engineer must identify the issued sources and revision; map every constant/table/formula/branch/rounding rule; double-check transcription; approve hand calculations for all facility/area/speed/crown/override paths; retain signed evidence. Disable any unverified path. |
+| Override provenance and approval | Overrides can supersede automatic criteria and materially change results. | Undocumented departures may be mistaken for governed values. | `Super.py`, `super_app.py`, `super_project.py`, `super_pdf.py` | Medium | **Yes** | Require reason, source/reference, author, date, and reviewer for each active override; show them prominently in UI/report; warn before export if incomplete. Preserve current override arithmetic. |
+| Authoritative application/engine/schema identity | Support and calculation reproduction require exact versions. | Two engineers may produce different outputs with no way to tell why. | `app_info.py`, `Super.py`, `super_app.py`, `super_pdf.py`, `super_project.py` | Low | Yes | **Implemented:** single app version, separate engine version, UI/PDF/project metadata, schema v3. Enforce version bump policy during release review. |
+| Backward-compatible project schema | Pilot users must reopen work safely across builds. | Silent loss/misinterpretation or corrupted project files. | `super_project.py`, compatibility fixtures/tests | Medium | Yes | **Implemented:** v1/v2 migration, legacy provenance, future-version refusal, atomic writes. Before pilot, add sanitized real v1/v2 fixtures and documented backup/rollback tests. |
+| Structured logging and actionable errors | A 3–5 person pilot needs support without developer access. | Users become blocked or share screenshots/raw customer files unnecessarily. | `app_logging.py`, `super_app.py`, parser/export modules | Medium | Yes | **Implemented:** rotating local log, operation-specific messages, open-log-folder prompt. Before pilot, exercise failures from the signed EXE and document safe log redaction/sharing. |
+| Windows executable build reproducibility | Engineers need the same identifiable binary. | One-off builds, missing assets/dependencies, and unverifiable support state. | `SuperElevation.spec`, `scripts/`, workflow | Medium | Yes | **Implemented in source:** clean PowerShell build, generated version resource, checksum, explicit modern entry point. Must still run and retain evidence on supported Windows. |
+| Signed installer and clean-machine acceptance | Normal users need a trustworthy install/uninstall path. | SmartScreen blocks, antivirus alerts, permissions failures, or unsigned-code trust concerns. | `packaging/Superelevation.iss`, signing/release infrastructure | Medium | **Yes** | Installer definition is present but unverified. Obtain Authenticode certificate, sign/timestamp EXE and installer, test standard-user install/uninstall on each pilot image, and regenerate checksums after signing. |
+| Controlled update/rollback delivery | Pilot users must know which build is approved. | Version drift, accidental downgrade, or inability to recover. | GitHub/private release channel, release docs | Medium | Yes | Use manual immutable signed releases with hashes, release notes, user/version register, prior-installer rollback, and explicit update notice. Do not add silent auto-update during the pilot. |
+| Real workflow acceptance | Synthetic tests cannot prove interoperability with customer files/ORD. | CSV may import incorrectly; DXF coordinates or report layout may fail on real projects. | acceptance fixtures, `super_landxml.py`, exports, release evidence | High | **Yes** | Use sanitized representative alignments including equations and unit variants; perform real ORD CSV round trips and DGN DXF overlays; compare PDFs/projects to approved expected outputs. Keep customer data outside the public repo. |
+| Pilot documentation and onboarding | Engineers need limitations and independent-check instructions at the point of use. | Misuse of unsupported geometry, stationing, units, or lane mapping. | README, in-app help, pilot guide | Medium | Yes | Provide a short install/first-project guide, supported-input matrix, spiral limitation, override rules, ORD/DXF checklist, backup/update/rollback, log-sharing/privacy, and engineering-aid disclaimer accepted by each pilot user. |
+| Commercial license/EULA/support terms | Public source visibility does not define paid-use rights or responsibility. | Contract, IP, warranty, and support disputes. | legal documents; distribution package | High | **Yes** | Engage qualified counsel; define license scope, seats, term, confidentiality, data handling, warranty/liability, engineering responsibility, support, termination, third-party notices, and source/assets rights. Do not infer an open-source license. |
+| Customer-data protection baseline | Project names, paths, geometry, and reports may be confidential. | Accidental disclosure through public issues, logs, backups, or fixtures. | UI/docs/logging/release process | Medium | Yes | Confirm local-only processing; prohibit telemetry/upload for pilot; document stored files/log paths and retention; redact logs; use sanitized fixtures; restrict release/support storage; threat-model project and XML parsing. |
+| Automated regression and release gates | Engineering behavior needs durable evidence. | A UI/export fix may alter calculations unnoticed. | all tests, workflows, release checklist | Medium | Yes | **Partly implemented:** metadata/error/schema tests and synthetic file smoke test. Add approved golden numeric vectors for every calculation branch and run the signed-build acceptance checklist before pilot. |
+
+## Phase 2 — broader commercial release
+
+| Item | Why it matters | Risk if omitted | Likely files/modules | Difficulty | Blocks paid pilot | Recommended implementation approach |
+|:--|:--|:--|:--|:--:|:--:|:--|
+| Versioned external criteria packages | Criteria maintenance should be reviewable without editing a 1,600-line engine. | Transcription drift and opaque code reviews. | split `Super.py`, new schemas/data packages/validators | High | No | After pilot validation, move immutable tables and source metadata into signed/versioned data files; validate schemas/checksums; require engineering approval and golden regression updates. Preserve exact arithmetic during extraction. |
+| Expanded LandXML support | Real alignments commonly include spirals, multiple alignments, namespaces, and varied units. | Excluded customers or unsafe partial geometry. | `super_landxml.py`, `super_dxf.py`, fixtures | High | No, if pilot inputs exclude them | Implement schema-aware multi-version parsing, explicit alignment selection, complete geometry validation, and spiral evaluation with independent geometry tests. |
+| Production update client | Larger deployments need discoverable, secure updates. | Persistent vulnerable/incorrect versions or unsafe downloads. | new update service/UI, release signing | High | No | Check a signed HTTPS manifest only on user request or admin schedule; verify signature/hash before install; show release notes; support deferral and rollback; never send project data. |
+| Installer lifecycle and enterprise deployment | Broader customers may require MSI, managed deployment, and admin controls. | IT rejection and inconsistent installs. | packaging/CI/signing | High | No | Evaluate MSI/MSIX versus signed Inno installer; add silent install/uninstall, per-machine option, upgrade codes, enterprise detection, SBOM, and reproducible build evidence. |
+| Observability/support bundle | More users require efficient, privacy-aware diagnosis. | High support cost and over-sharing. | logging, diagnostic exporter, docs | Medium | No | Add redacted support bundle with versions, OS, dependency/build ID, recent logs, and opt-in attachment selection; never include project files automatically. |
+| Security hardening program | File parsers and update mechanisms expand attack surface. | Malicious input, dependency compromise, or data leakage. | dependencies, parsers, CI, update path | High | No | Pin/review dependencies, generate SBOM, scan builds, fuzz XML/JSON, impose file/complexity limits, review XML parser posture, sign releases, protect keys, establish vulnerability disclosure and patch SLAs. |
+| Broader OS/ORD compatibility matrix | Commercial claims must specify supported environments. | Unbounded support and environment-specific failures. | CI, VM lab, acceptance suite | High | No | Define Windows/ORD versions; test each clean image; retain real import/overlay evidence; publish compatibility and deprecation policy. |
+| Accessibility and usability validation | A broader user base needs consistent, accessible workflows. | Input mistakes and adoption barriers. | `super_app.py`, documentation | Medium | No | Test DPI/scaling, keyboard navigation, focus, screen readers, color contrast, long paths, locale/decimal behavior, and warning comprehension with roadway engineers. |
+| Licensing enforcement/entitlements | Wider sales may need controlled access. | Unmanaged redistribution or burdensome manual administration. | new licensing layer/service | High | No | Choose privacy-preserving offline/online entitlements after legal/product design; include grace periods and support recovery; licensing must never alter calculation results. |
+| Maintainable architecture and asset provenance | Legacy duplicate UI and embedded assets increase review/build burden. | Divergent behavior, unclear copyright, and large opaque source. | `super_ui.py`, `super_pdf.py`, asset packaging | Medium | No | Remove the legacy fallback after migration, package approved assets separately with provenance/licenses, isolate UI/services, type models, and enforce dependency boundaries. |
+| Expanded automated assurance | Commercial scale needs more than example-based unit tests. | Edge-case regressions across stations, tables, and files. | tests/CI/fixtures | High | No | Add boundary/property/metamorphic tests, corruption/fuzz cases, visual PDF/DXF checks, installer tests, performance limits, and mutation/coverage reporting without using coverage as a substitute for engineering validation. |
+
+## Current update, licensing, and data posture
+
+- Update delivery is manual through release assets. There is no background network check or auto-install behavior.
+- The repository has no open-source license and no commercial EULA. Public visibility does not grant reuse rights, but it also does not supply customer contract terms.
+- Calculation and project processing is local. No telemetry or upload code was found. Exports and logs remain wherever the user saves them; diagnostic logs contain exception details and can contain local file paths.
+- Dependencies are range-pinned, not hash-locked, and there is no SBOM or vulnerability-response process.
+
+## Items that still block a paid pilot
+
+1. Qualified-engineer approval of governing sources, every embedded value/formula/assumption, override policy, and golden calculations.
+2. Approved commercial license/EULA, support terms, third-party notices, and confirmation of rights to embedded logos/source-sheet images.
+3. A Windows build produced by the documented process, Authenticode signing/timestamping, installer validation, malware scanning, and clean-machine launch/install/uninstall evidence.
+4. Real sanitized project acceptance: LandXML, PDF, project compatibility, DXF-in-DGN verification, and actual ORD CSV round-trip evidence.
+5. Final pilot onboarding/limitations/privacy/support package and named release/update/rollback owner.
+
+Spiral overlay support does not have to block a narrowly scoped pilot only if pilot inputs are screened to exclude spirals and the existing block is verified. It is a broader-release requirement.

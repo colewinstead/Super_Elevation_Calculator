@@ -1,3 +1,7 @@
+from app_info import CALCULATION_ENGINE_VERSION
+from criteria_info import criteria_metadata
+
+
 def parse_station(value: str) -> float:
     """
     Parse a station string (e.g., "10+50.25" or "1050.25") into feet.
@@ -1412,6 +1416,18 @@ def calculate_superelevation(
         pnc_out_ft = reverse_crown_out_ft + Lt
 
     return {
+        "calculation_metadata": {
+            "engine_version": CALCULATION_ENGINE_VERSION,
+            "criteria": criteria_metadata(),
+            "manual_overrides": {
+                "superelevation_rate": e_manual is not None,
+                "runoff_length": L_manual is not None,
+                "tangent_runout": Lt_manual is not None,
+                "side_friction": bool(friction_input.strip()),
+                "relative_gradient": bool(rel_grad_input.strip()),
+                "normal_crown": normal_crown_input.strip() not in {"", "0.02", "0.0200"},
+            },
+        },
         "inputs": {
             "pc": pc_input,
             "pt": pt_input,

@@ -63,6 +63,8 @@ Download the latest Windows executable from [GitHub Releases](https://github.com
 
 Requires Python 3.11 or newer.
 
+The current application release is **0.1.0** and the calculation-engine release is **1.0.0**. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+
 ```powershell
 git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
 Set-Location .\Super_Elevation_Calculator
@@ -111,6 +113,9 @@ The DXF is a graphics handoff, not a native Bentley civil model.
 
 ## Engineering notes
 
+> [!CAUTION]
+> The legacy calculation criteria currently carry the profile ID `mdot-legacy-unverified`. Table and sheet identifiers are present in the code, but the governing publication title, revision, effective date, and value-by-value traceability have not yet been verified. This is a paid-pilot blocker until a qualified roadway engineer approves the criteria matrix and golden calculations. See [`docs/PAID_PILOT_READINESS.md`](docs/PAID_PILOT_READINESS.md).
+
 <details>
 <summary><strong>ORD import checklist</strong></summary>
 
@@ -154,6 +159,93 @@ LandXML points are interpreted as Northing/Easting and written to CAD as X=Easti
 | [`super_dxf.py`](super_dxf.py) | Overlay DXF generation |
 | [`super_pdf.py`](super_pdf.py) | PDF calculation reports |
 | [`super_project.py`](super_project.py) | Project save/load support |
+| [`app_info.py`](app_info.py) | Authoritative application and engine versions |
+| [`criteria_info.py`](criteria_info.py) | Criteria/source traceability metadata |
+| [`app_logging.py`](app_logging.py) | Per-user rotating diagnostic logging |
+
+## Project-file compatibility
+
+Projects use JSON schema version 3. The application migrates schema v1 and v2 files in memory and preserves their calculation provenance as `legacy-unversioned`. It refuses project files created by a newer schema rather than silently discarding unknown data. Saves use a temporary file and atomic replacement to reduce corruption risk.
+
+Opening and resaving an older project upgrades its container to schema v3; it does not retroactively claim that old calculations were produced by the current engine.
+
+## Logging and troubleshooting
+
+Unexpected errors and failed LandXML, project, PDF, CSV, and DXF operations are written to a rotating local log. Error dialogs offer to open the log folder. Logs are kept on the user's computer and are not uploaded automatically.
+
+| Platform | Log folder |
+|:--|:--|
+| Windows | `%LOCALAPPDATA%\SuperelevationCalculator\Logs` |
+| macOS | `~/Library/Logs/SuperelevationCalculator` |
+| Linux | `$XDG_STATE_HOME/superelevation-calculator/logs` or `~/.local/state/...` |
+
+When reporting a problem, reproduce it with sanitized data if possible, then send the relevant `superelevation.log` excerpt. Logs can contain local file paths and exception details, so review them before sharing.
+
+## Windows build
+
+Build the portable executable on a clean Windows x64 machine with Python 3.11:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build_windows.ps1
+```
+
+The script installs the declared dependencies and PyInstaller, removes old build output, generates Windows version resources from `app_info.py`, builds `dist\SuperElevation.exe`, and writes `dist\SHA256SUMS.txt`.
+
+To also build the optional per-user installer, install Inno Setup 6 and run:
+
+```powershell
+.\scripts\build_windows.ps1 -BuildInstaller
+```
+
+### Free pilot signing and checksums
+
+For the controlled pilot only, create a self-signed code-signing certificate on the private Windows build computer:
+
+```powershell
+.\scripts\new_pilot_signing_certificate.ps1
+```
+
+The private keys stay in that Windows user's certificate store. The script exports only the public pilot root and public signing certificates to `dist`. Do not upload or distribute a `.pfx` file or any private-key export.
+
+Build and sign the executable and installer, then generate SHA-256 checksums over the final signed files:
+
+```powershell
+.\scripts\build_windows.ps1 -BuildInstaller -Sign
+```
+
+Verify every checksum, both Authenticode signatures, and the private certificate chain without changing the computer's trust settings:
+
+```powershell
+.\scripts\verify_windows_release.ps1
+```
+
+Self-signing does not create public Windows reputation. A pilot engineer must independently confirm the public certificate thumbprints with Cole Winstead and explicitly trust them for their Windows account. This command must be run in a normal interactive PowerShell window so Windows can display its root-trust confirmation; it cannot be completed through a headless SSH session:
+
+```powershell
+.\scripts\install_pilot_public_certificate.ps1 `
+    -RootCertificatePath .\Cole-Winstead-Pilot-Root.cer `
+    -SigningCertificatePath .\Cole-Winstead-Pilot-Code-Signing.cer `
+    -AcknowledgePilotTrust
+```
+
+The engineer should then compare the installer's SHA-256 value with `SHA256SUMS.txt`. Browser or Microsoft Defender SmartScreen warnings may still appear because this is not a publicly trusted commercial certificate. Customer IT approval is recommended before installing a private trust certificate.
+
+The build script ignores nonfunctional Microsoft Store Python aliases and also checks Inno Setup's standard per-user and Program Files locations. For nonstandard installations, pass explicit paths:
+
+```powershell
+.\scripts\build_windows.ps1 -BuildInstaller `
+    -PythonPath "C:\Path\To\python.exe" `
+    -InnoSetupCompiler "C:\Path\To\ISCC.exe"
+```
+
+The installer definition is in `packaging\Superelevation.iss`. A Windows build, installer install/uninstall, code signature, checksum, and SmartScreen behavior must be validated on the pilot Windows images before distribution.
+
+Before paid distribution, review the [current Inno Setup commercial-license guidance](https://jrsoftware.org/isorder.php) and record the licensing decision with the other third-party notices.
+
+## Release procedure
+
+Follow [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). In summary: approve engineering traceability, update `app_info.py`, run all tests, build on Windows, exercise every file workflow from the built executable, sign the EXE/installer, verify signatures and checksums on a clean pilot machine, archive the validation evidence, and publish immutable release assets with release notes. Pilot updates are manual, controlled releases; the application does not silently download or install updates.
 
 ## Tests
 
@@ -163,6 +255,8 @@ python -m unittest -v
 ```
 
 The test suite covers calculation sharing, station formatting, lane signs, LandXML parsing, coordinate transforms, project persistence, ORD CSV mapping, and DXF generation.
+
+It also covers version/criteria metadata, rotating logs, project schema migration/refusal, PDF traceability, Windows version-resource generation, and a synthetic end-to-end LandXML/CSV/PDF/DXF/project workflow.
 
 ## Contributing
 

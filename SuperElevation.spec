@@ -1,16 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_data_files
 
 pyproj_datas = collect_data_files('pyproj', includes=['proj_dir/share/proj/**'])
+version_file = Path('build/windows_version_info.txt')
+if not version_file.exists():
+    raise SystemExit('Run scripts/build_windows.ps1 so Windows version metadata is generated first.')
 
 
 a = Analysis(
-    ['super_ui.py'],
+    ['super_app.py'],
     pathex=[],
     binaries=[],
     datas=pyproj_datas,
-    hiddenimports=['ezdxf', 'pyproj'],
+    hiddenimports=['ezdxf', 'pyproj', 'super_ui'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -39,4 +44,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    version=str(version_file),
 )
