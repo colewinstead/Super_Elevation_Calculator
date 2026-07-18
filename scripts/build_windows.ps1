@@ -145,7 +145,7 @@ $PythonExe = Resolve-PythonExecutable
 Write-Host "Using Python: $PythonExe"
 
 if (-not $SkipInstall) {
-    Invoke-Checked $PythonExe @("-m", "pip", "install", "-r", "requirements.txt", "pyinstaller>=6.0,<7.0")
+    Invoke-Checked $PythonExe @("-m", "pip", "install", "-r", "requirements-lock.txt", "pyinstaller>=6.0,<7.0")
 }
 
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue

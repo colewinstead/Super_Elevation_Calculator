@@ -4,9 +4,20 @@ import sys
 import io
 import os
 import subprocess
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog
-from tkinter import font as tkfont
+try:
+    import tkinter as tk
+    from tkinter import ttk, messagebox, filedialog, simpledialog
+    from tkinter import font as tkfont
+except ImportError:  # Browser/Pyodide builds need the embedded report assets, not Tk itself.
+    class _TkStub:
+        class Tk:
+            pass
+
+        def __getattr__(self, _name):
+            return object
+
+    tk = _TkStub()
+    ttk = messagebox = filedialog = simpledialog = tkfont = _TkStub()
 
 import Super
 

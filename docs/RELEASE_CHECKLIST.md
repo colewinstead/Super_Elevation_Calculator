@@ -41,6 +41,14 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 - [ ] Save/reload a new project and approved v1/v2 compatibility fixtures; compare calculations and metadata.
 - [ ] Force one failure for each file workflow and confirm the message, rotating log, and Open Log Folder action.
 
+## Browser build acceptance
+
+- [ ] Run `npm ci`, `npm exec tsc -- --noEmit`, and `npm test` from `web`; retain the Pyodide parity output.
+- [ ] Open the production build on desktop and mobile-width browsers; verify calculation, project open/save, LandXML replacement warning, lookup, and all exports.
+- [ ] Confirm the browser network log shows no project/LandXML upload or calculation API calls.
+- [ ] Open one schema-v4 project in both browser and desktop versions and verify calculations, embedded LandXML integrity, metadata, and export results.
+- [ ] Publish the exact validated commit and verify the public URL before announcing it.
+
 ## Delivery and support
 
 - [ ] Publish immutable, versioned EXE/installer/checksum assets and release notes to the approved private delivery channel.

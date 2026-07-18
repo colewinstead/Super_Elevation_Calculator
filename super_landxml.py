@@ -159,10 +159,8 @@ class LandXMLData:
         return records
 
 
-def load_landxml(path: str | Path) -> LandXMLData:
-    file_path = Path(path)
-    tree = ET.parse(file_path)
-    root = tree.getroot()
+def _parse_landxml_root(root: ET.Element, source_name: str) -> LandXMLData:
+    file_path = Path(source_name)
 
     alignment = root.find(".//lx:Alignment", NS)
     if alignment is None:
@@ -235,3 +233,21 @@ def load_landxml(path: str | Path) -> LandXMLData:
         warnings=warnings,
         _segments=segments,
     )
+
+
+def parse_landxml_text(content: str, source_name: str = "alignment.xml") -> LandXMLData:
+    """Parse LandXML already held in memory, as required by browser clients."""
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as exc:
+        raise ValueError(f"The LandXML is not valid XML (line {exc.position[0]}, column {exc.position[1]}).") from exc
+    return _parse_landxml_root(root, source_name)
+
+
+def load_landxml(path: str | Path) -> LandXMLData:
+    file_path = Path(path)
+    try:
+        tree = ET.parse(file_path)
+    except ET.ParseError as exc:
+        raise ValueError(f"The LandXML is not valid XML (line {exc.position[0]}, column {exc.position[1]}).") from exc
+    return _parse_landxml_root(tree.getroot(), str(file_path))

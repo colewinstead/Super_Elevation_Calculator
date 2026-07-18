@@ -50,7 +50,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertFalse(metadata["manual_overrides"]["superelevation_rate"])
         self.assertFalse(metadata["manual_overrides"]["normal_crown"])
 
-    def test_project_v3_records_release_metadata_and_round_trips(self):
+    def test_project_v4_records_release_metadata_and_round_trips(self):
         payload = {
             "version": super_project.PROJECT_VERSION,
             "application_version": APP_VERSION,
@@ -64,7 +64,7 @@ class PilotReadinessTests(unittest.TestCase):
             super_project.save_project(path, payload)
             loaded = super_project.load_project(path)
             leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
-        self.assertEqual(loaded["version"], 3)
+        self.assertEqual(loaded["version"], super_project.PROJECT_VERSION)
         self.assertEqual(loaded["application_version"], APP_VERSION)
         self.assertEqual(loaded["calculation_engine_version"], CALCULATION_ENGINE_VERSION)
         self.assertEqual(loaded["criteria"]["profile_id"], "mdot-legacy-unverified")
