@@ -73,9 +73,20 @@ class TDOTCriteriaTests(unittest.TestCase):
         self.assertEqual(result["Lr"], 110.0)
         self.assertAlmostEqual(result["Lt"], 47.8260869565)
         self.assertAlmostEqual(result["segments"]["total_transition"], 157.8260869565)
+        self.assertEqual(round(result["Lt"], 2), 47.83)
+        self.assertEqual(round(result["segments"]["total_transition"], 2), 157.83)
+        self.assertEqual(round(result["segments"]["total_transition"]), 158)
         self.assertAlmostEqual(result["pnc_ft"], 921.0869565217)
         self.assertAlmostEqual(result["full_super_ft"], 1078.9130434783)
         self.assertTrue(any("spiral" in warning.lower() for warning in result["warnings"]))
+
+    def test_four_lane_design_guide_example_matches_tdot_values(self):
+        result = self.calculate(speed="30", radius="261", area="urban", lanes="4")
+        self.assertAlmostEqual(result["e"], 0.03)
+        self.assertEqual(result["Lr"], 82.0)
+        self.assertEqual(round(result["Lt"], 2), 54.67)
+        self.assertEqual(round(result["segments"]["total_transition"], 2), 136.67)
+        self.assertEqual(round(result["segments"]["total_transition"]), 137)
 
     def test_rural_table_minimum_and_six_lane_runoff_cross_check(self):
         two_lane = self.calculate(speed="70", radius="1810", lanes="2")

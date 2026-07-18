@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 import Super
 from app_info import APP_VERSION, version_label
 import app_logging
-from criteria_info import MDOT_PROFILE_ID
+from criteria_info import MDOT_PROFILE_ID, TDOT_PROFILE_ID
 import super_batch
 import super_dxf
 import super_exports
@@ -42,6 +42,12 @@ HEADER_FONT = (".AppleSystemUIFont", 13, "bold") if IS_MACOS else ("Segoe UI", 1
 VALUE_FONT = (".AppleSystemUIFont", 12, "bold") if IS_MACOS else ("Segoe UI", 11, "bold")
 TEXT_FONT = (".AppleSystemUIFont", 11) if IS_MACOS else ("Segoe UI", 10)
 MONO_FONT = ("Menlo", 10) if IS_MACOS else ("Consolas", 9)
+
+CRITERIA_PROFILE_LABELS = {
+    MDOT_PROFILE_ID: "Mississippi DOT (MDOT) - revised April 22, 2026",
+    TDOT_PROFILE_ID: "Tennessee DOT (TDOT) - revised April 30, 2026",
+}
+CRITERIA_PROFILE_IDS = {label: profile_id for profile_id, label in CRITERIA_PROFILE_LABELS.items()}
 
 
 class ModernSuperElevationUI(tk.Tk):
@@ -109,6 +115,7 @@ class ModernSuperElevationUI(tk.Tk):
             "auto_open_pdf": tk.BooleanVar(value=True),
             "curve_notes": tk.StringVar(),
         }
+        self.criteria_profile_display = tk.StringVar(value=CRITERIA_PROFILE_LABELS[MDOT_PROFILE_ID])
         self.computed_vars = {
             "e": tk.StringVar(value="auto"),
             "Lr": tk.StringVar(value="auto"),
@@ -524,12 +531,10 @@ class ModernSuperElevationUI(tk.Tk):
         row = self._field(body, row, "Curve radius (ft) *", "radius")
 
         row = self._section(body, row, "Roadway")
-        row = self._combo(
+        row = self._profile_combo(
             body,
             row,
             "Governing standard",
-            "criteria_profile",
-            [MDOT_PROFILE_ID, "tdot-rd11-2026-04-30"],
         )
         row = self._combo(
             body,
@@ -1026,13 +1031,39 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             combo.configure(state="disabled")
         return row + 1
 
+    def _profile_combo(self, parent: ttk.Frame, row: int, label: str) -> int:
+        ttk.Label(parent, text=label, style="Panel.TLabel").grid(
+            row=row, column=0, sticky="w", padx=(0, 8), pady=3
+        )
+        combo = ttk.Combobox(
+            parent,
+            textvariable=self.criteria_profile_display,
+            values=list(CRITERIA_PROFILE_IDS),
+            state="readonly",
+            width=48,
+        )
+        combo.grid(row=row, column=1, columnspan=2, sticky="ew", pady=3)
+        combo.bind("<<ComboboxSelected>>", self._on_profile_display_selected)
+        self.criteria_profile_combo = combo
+        return row + 1
+
     def _setup_auto_handlers(self) -> None:
         for key, var in self.vars.items():
             if key in {"lookup_station", "lookup_super", "auto_open_pdf"}:
                 continue
             var.trace_add("write", self._on_input_change)
         self.vars["landxml_curve"].trace_add("write", self._on_landxml_curve_change)
+        self.vars["criteria_profile"].trace_add("write", self._sync_profile_display)
         self.vars["criteria_profile"].trace_add("write", self._on_profile_change)
+
+    def _on_profile_display_selected(self, *_: object) -> None:
+        profile_id = CRITERIA_PROFILE_IDS.get(self.criteria_profile_display.get())
+        if profile_id and self.vars["criteria_profile"].get() != profile_id:
+            self.vars["criteria_profile"].set(profile_id)
+
+    def _sync_profile_display(self, *_: object) -> None:
+        profile_id = self.vars["criteria_profile"].get()
+        self.criteria_profile_display.set(CRITERIA_PROFILE_LABELS.get(profile_id, profile_id))
 
     def _on_profile_change(self, *_: object) -> None:
         if self._suspend_auto:
