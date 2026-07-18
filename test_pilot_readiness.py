@@ -135,7 +135,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertIn(CALCULATION_ENGINE_VERSION.encode(), content)
 
     def test_windows_version_resource_uses_authoritative_version(self):
-        self.assertEqual(version_tuple(APP_VERSION), (1, 2, 0, 0))
+        self.assertEqual(version_tuple(APP_VERSION), (1, 2, 1, 0))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "version.txt"
             generate(path)
