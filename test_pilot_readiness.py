@@ -45,8 +45,10 @@ class PilotReadinessTests(unittest.TestCase):
         results = self.sample_results()
         metadata = results["calculation_metadata"]
         self.assertEqual(metadata["engine_version"], CALCULATION_ENGINE_VERSION)
-        self.assertEqual(metadata["criteria"]["profile_id"], "mdot-legacy-unverified")
-        self.assertIn("VERIFICATION REQUIRED", metadata["criteria"]["source_status"])
+        self.assertEqual(metadata["criteria"]["profile_id"], "mdot-rdsd-2026-04-22")
+        self.assertIn("VALUE-BY-VALUE VERIFICATION", metadata["criteria"]["source_status"])
+        self.assertEqual(metadata["criteria"]["source_documents"][1]["compilation_revision"], "2026-04-22")
+        self.assertEqual(metadata["criteria"]["source_documents"][1]["issue_date"], "2017-08-01")
         self.assertFalse(metadata["manual_overrides"]["superelevation_rate"])
         self.assertFalse(metadata["manual_overrides"]["normal_crown"])
 
@@ -67,7 +69,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertEqual(loaded["version"], super_project.PROJECT_VERSION)
         self.assertEqual(loaded["application_version"], APP_VERSION)
         self.assertEqual(loaded["calculation_engine_version"], CALCULATION_ENGINE_VERSION)
-        self.assertEqual(loaded["criteria"]["profile_id"], "mdot-legacy-unverified")
+        self.assertEqual(loaded["criteria"]["profile_id"], "mdot-rdsd-2026-04-22")
         self.assertEqual(leftovers, [])
 
     def test_future_project_schema_is_refused(self):
@@ -140,7 +142,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertNotIn("STANTEC_PNG_B64", source)
 
     def test_windows_version_resource_uses_authoritative_version(self):
-        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 2, 0))
+        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 3, 0))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "version.txt"
             generate(path)

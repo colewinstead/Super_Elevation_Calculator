@@ -1,4 +1,4 @@
-"""Traceability metadata for the unchanged legacy engineering criteria."""
+"""Traceability metadata for the unchanged MDOT-oriented engineering criteria."""
 
 from __future__ import annotations
 
@@ -7,14 +7,44 @@ from typing import Any
 
 
 _CRITERIA_METADATA = {
-    "profile_id": "mdot-legacy-unverified",
-    "profile_name": "MDOT-oriented legacy superelevation criteria",
-    "revision": "unverified",
-    "source_status": "SOURCE VERIFICATION REQUIRED BEFORE PAID PILOT",
-    "governing_authority": (
-        "Mississippi Department of Transportation (attribution from the legacy implementation; "
-        "governing publication and revision have not been verified)"
+    "profile_id": "mdot-rdsd-2026-04-22",
+    "profile_name": "MDOT superelevation criteria",
+    "revision": "2020 manual / standard drawings compilation revised 2026-04-22",
+    "source_status": (
+        "ISSUED SOURCES IDENTIFIED; VALUE-BY-VALUE VERIFICATION AND ENGINEER APPROVAL REQUIRED "
+        "BEFORE PAID PILOT"
     ),
+    "governing_authority": "Mississippi Department of Transportation",
+    "source_documents": [
+        {
+            "title": "2020 Roadway Design Manual",
+            "edition": "2020",
+            "applicable_sections": ["3-4.0", "14-2.04"],
+            "url": (
+                "https://mdot.ms.gov/documents/Roadway%20Design/Standards/Manuals/"
+                "2020%20Roadway%20Design%20Manual.pdf"
+            ),
+        },
+        {
+            "title": "Roadway Design Standard Drawings",
+            "issue_date": "2017-08-01",
+            "compilation_revision": "2026-04-22",
+            "applicable_sheets": [
+                "SE-1",
+                "SE-2A",
+                "SE-2B",
+                "SE-2C",
+                "SE-2D",
+                "SE-2E",
+                "SE-3A",
+                "SE-3B",
+            ],
+            "url": (
+                "https://mdot.ms.gov/documents/Roadway%20Design/Standards/Drawings/"
+                "Roadway%20Design%20Standard%20Drawings.pdf"
+            ),
+        },
+    ],
     "referenced_identifiers": [
         "Table 3-4-A",
         "Table 3-4-B",
@@ -31,8 +61,9 @@ _CRITERIA_METADATA = {
     ],
     "implementation_module": "Super.py",
     "engineering_change_notice": (
-        "This metadata does not validate the embedded values or formulas. A qualified roadway engineer "
-        "must trace each criterion to the governing signed/issued source and approve golden calculations."
+        "This source identification does not validate the embedded values, formulas, interpolation, or "
+        "branching rules. A qualified roadway engineer must complete the criteria matrix, independently "
+        "check transcription, and approve golden calculations."
     ),
 }
 

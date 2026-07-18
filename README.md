@@ -128,7 +128,7 @@ The DXF is a graphics handoff, not a native Bentley civil model.
 ## Engineering notes
 
 > [!CAUTION]
-> The legacy calculation criteria currently carry the profile ID `mdot-legacy-unverified`. Table and sheet identifiers are present in the code, but the governing publication title, revision, effective date, and value-by-value traceability have not yet been verified. This is a paid-pilot blocker until a qualified roadway engineer approves the criteria matrix and golden calculations. See [`docs/PAID_PILOT_READINESS.md`](docs/PAID_PILOT_READINESS.md).
+> New calculations carry the profile ID `mdot-rdsd-2026-04-22`. The identified sources are MDOT's *2020 Roadway Design Manual* and the *Roadway Design Standard Drawings* compilation revised April 22, 2026; the applicable SE-1 through SE-3B sheets show an issue date of August 1, 2017. Source identification does not establish value-by-value validation. This remains a paid-pilot blocker until a qualified roadway engineer approves the criteria matrix and golden calculations. See [`docs/PAID_PILOT_READINESS.md`](docs/PAID_PILOT_READINESS.md).
 
 <details>
 <summary><strong>ORD import checklist</strong></summary>

@@ -2,9 +2,9 @@
 
 ## Executive conclusion
 
-The application has a useful modular calculation/export core and a meaningful 44-test baseline, but it is not yet ready to be represented as validated commercial roadway-engineering software. The dominant blocker is engineering traceability: criteria identifiers exist, yet the governing publication, revision, effective date, value provenance, assumptions, and independent golden calculations are not established. Legal terms, a signed/validated Windows release, and real ORD/customer acceptance evidence are also required before money or production reliance is involved.
+The application has a useful modular calculation/export core and a meaningful automated-test baseline, but it is not yet ready to be represented as validated commercial roadway-engineering software. The dominant blocker is engineering traceability: the governing MDOT publications and revisions are now identified, but value provenance, implementation assumptions, and independent golden calculations are not established. Legal terms, a signed/validated Windows release, and real ORD/customer acceptance evidence are also required before money or production reliance is involved.
 
-The changes accompanying this assessment improve identification, diagnostics, compatibility, and build repeatability without altering formulas, lookup values, stationing, ORD mappings, transformations, or engineering outputs. New calculations identify application `0.1.0`, engine `1.0.0`, and criteria profile `mdot-legacy-unverified` with a visible source-verification warning.
+The changes accompanying this assessment improve identification, diagnostics, compatibility, and build repeatability without altering formulas, lookup values, stationing, ORD mappings, transformations, or engineering outputs. New calculations identify the application version, engine `1.0.0`, and criteria profile `mdot-rdsd-2026-04-22` with a visible value-verification warning.
 
 ## Architecture and evidence reviewed
 
@@ -21,9 +21,9 @@ The pre-change baseline was 44 passing tests on the review host. Embedded base64
 
 ## Engineering traceability finding
 
-`Super.py` references Table 3-4-A/B/C, Equation 3-4-1, SE-1, SE-2A–E, and SE-3A–B. It also describes some behavior only as “AASHTO-style,” uses a `DEFAULT_FRICTION_SCALE = 0.24`, performs nearest-row and interpolation choices, caps rates for area/speed cases, and accepts manual overrides. The repository does not establish:
+`Super.py` references Table 3-4-A/B/C, Equation 3-4-1, SE-1, SE-2A–E, and SE-3A–B. These identifiers are now tied to MDOT's *2020 Roadway Design Manual* and *Roadway Design Standard Drawings* compilation revised April 22, 2026. The individual SE sheets show an issue date of August 1, 2017. The implementation also describes some behavior only as “AASHTO-style,” uses a `DEFAULT_FRICTION_SCALE = 0.24`, performs nearest-row and interpolation choices, caps rates for area/speed cases, and accepts manual overrides. The repository still does not establish:
 
-- full standard/drawing titles, issuing authority, edition, revision, effective date, page/sheet, or supersession status;
+- a complete criterion-to-page/sheet matrix or confirmation that no later design memo supersedes a cited rule;
 - a value-by-value transcription review for every embedded table;
 - why the friction scaling and fallback formula are appropriate for each enabled facility/area case;
 - which rounding, interpolation, nearest-row, minimum/maximum, and out-of-range rules are explicitly governed versus implementation assumptions;
@@ -31,7 +31,7 @@ The pre-change baseline was 44 passing tests on the review host. Embedded base64
 - independent hand calculations or agency-approved examples covering every branch;
 - change control requiring engineering approval when criteria or code changes.
 
-Therefore the current criteria cannot yet be called validated or traceable to a governing source. The metadata added in this work intentionally records that fact rather than creating false provenance.
+Therefore the current criteria are source-identified but cannot yet be called validated. The metadata intentionally records that distinction rather than treating an identified publication date as proof that every implemented value and rule is correct.
 
 ## Phase 1 — reliable paid pilot for 3–5 engineers
 
