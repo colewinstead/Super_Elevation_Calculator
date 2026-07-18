@@ -2,23 +2,38 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
+async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
   return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
+    new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }),
     { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
     { waitUntil() {}, passThroughOnException() {} },
   );
 }
 
-test("renders the browser-only calculator shell", async () => {
-  const response = await render();
+test("renders the product homepage without starting the calculation runtime", async () => {
+  const response = await render("/");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Superelevation Calculator \| Roadway Design Toolkit/i);
+  assert.match(html, /From roadway curve/i);
+  assert.match(html, /Download EXE/i);
+  assert.match(html, /SuperelevationCalculator-macOS-Apple-Silicon\.dmg/i);
+  assert.match(html, /SuperelevationCalculator-macOS-Intel\.dmg/i);
+  assert.match(html, /http:\/\/localhost\/og\.png/i);
+  await access(new URL("../public/og.png", import.meta.url));
+  assert.doesNotMatch(html, /Starting private browser workspace/i);
+  assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+});
+
+test("renders the browser-only calculator shell on its dedicated route", async () => {
+  const response = await render("/calculator");
   assert.equal(response.status, 200);
   const html = await response.text();
   const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
-  assert.match(html, /<title>Superelevation Calculator<\/title>/i);
+  assert.match(html, /<title>Browser Calculator \| Superelevation Calculator<\/title>/i);
   assert.match(html, /CalculatorApp-[^"']+\.js/i);
   assert.match(source, /Private browser engine/i);
   assert.match(source, /Select LandXML/i);

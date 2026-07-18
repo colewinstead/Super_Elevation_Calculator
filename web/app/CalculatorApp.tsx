@@ -1,7 +1,7 @@
 "use client";
 
 /* Browser worker responses mirror dynamically typed Python dictionaries. */
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages */
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -465,6 +465,7 @@ export default function CalculatorApp() {
       <header className="topbar">
         <div className="brand-mark">SE</div>
         <div><p className="eyebrow">Civil design workspace</p><h1>Superelevation Calculator</h1></div>
+        <a className="workspace-home" href="/">Product home</a>
         <div className={`runtime ${runtime}`}><span></span>{runtime === "ready" ? "Private browser engine ready" : runtimeMessage}</div>
       </header>
 

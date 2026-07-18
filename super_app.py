@@ -1660,6 +1660,9 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
 
 
 if __name__ == "__main__":
+    if "--version" in sys.argv:
+        print(version_label())
+        raise SystemExit(0)
     app_logging.configure_logging()
     app = ModernSuperElevationUI()
     app.mainloop()

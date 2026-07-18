@@ -135,7 +135,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertIn(CALCULATION_ENGINE_VERSION.encode(), content)
 
     def test_windows_version_resource_uses_authoritative_version(self):
-        self.assertEqual(version_tuple(APP_VERSION), (1, 2, 1, 0))
+        self.assertEqual(version_tuple(APP_VERSION), (1, 3, 0, 0))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "version.txt"
             generate(path)
@@ -151,6 +151,20 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertLess(exe_sign, installer_sign)
         self.assertLess(installer_sign, checksum)
         self.assertIn('Where-Object { $_.Name -ne "SHA256SUMS.txt" }', script)
+
+    def test_macos_release_builds_native_disk_images(self):
+        root = Path(__file__).parent
+        script = (root / "scripts" / "build_macos.sh").read_text(encoding="utf-8")
+        spec = (root / "SuperElevationMac.spec").read_text(encoding="utf-8")
+        workflow = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        self.assertIn('release_arch="Apple-Silicon"', script)
+        self.assertIn('release_arch="Intel"', script)
+        self.assertIn("hdiutil create", script)
+        self.assertIn('lipo "$executable" -verify_arch', script)
+        self.assertIn('"LSMinimumSystemVersion": "15.0"', spec)
+        self.assertIn('bundle_identifier="com.colewinstead.superelevationcalculator"', spec)
+        self.assertIn("macos-15-intel", workflow)
+        self.assertIn("SHA256SUMS-macOS.txt", workflow)
 
     def test_pilot_certificate_release_contains_no_private_key_export(self):
         root = Path(__file__).parent

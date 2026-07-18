@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest"><strong>Download for Windows</strong></a>
+  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest"><strong>Download for Windows or macOS</strong></a>
   &nbsp;&middot;&nbsp;
   <a href="#quick-start">Run from source</a>
   &nbsp;&middot;&nbsp;
@@ -54,7 +54,7 @@ flowchart LR
 
 ## Download
 
-Download the latest Windows executable from [GitHub Releases](https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest). The executable is distributed as a release asset instead of being stored in the source tree.
+Download the latest Windows executable or native macOS disk image from [GitHub Releases](https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest). Separate macOS builds are provided for Apple Silicon and Intel processors. Desktop applications are distributed as release assets instead of being stored in the source tree.
 
 > [!IMPORTANT]
 > This is an engineering aid. Always validate criteria, stationing, coordinate systems, lane naming, and exported geometry against the governing standards and the project design file.
@@ -63,7 +63,7 @@ Download the latest Windows executable from [GitHub Releases](https://github.com
 
 Requires Python 3.11 or newer.
 
-The current application release is **0.1.0** and the calculation-engine release is **1.0.0**. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+The current application release is **1.3.0** and the calculation-engine release is **1.0.0**. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
 
 ```powershell
 git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
@@ -208,9 +208,19 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 The script installs the declared dependencies and PyInstaller, removes old build output, generates Windows version resources from `app_info.py`, builds `dist\SuperElevation.exe`, and writes `dist\SHA256SUMS.txt`.
 
+## macOS build
+
+Build the native application and disk image on macOS 15 or newer:
+
+```bash
+./scripts/build_macos.sh
+```
+
+The script detects Apple Silicon or Intel, packages `Superelevation Calculator.app`, creates the matching DMG, verifies its version and architecture, and writes a SHA-256 checksum file. GitHub Actions builds both architectures for each release.
+
 ### Automatic GitHub releases
 
-Every pull request targeting `main` must increase `APP_VERSION` in `app_info.py` beyond the latest GitHub release. After that pull request is merged and all release jobs pass, GitHub publishes a full release tagged `vMAJOR.MINOR.PATCH` with the Windows executable, checksums, and the matching browser build archive. Because every merge becomes a user-facing release, do not merge documentation-only or intermediate work without assigning it the next version.
+Every pull request targeting `main` must increase `APP_VERSION` in `app_info.py` beyond the latest GitHub release. After that pull request is merged and all release jobs pass, GitHub publishes a full release tagged `vMAJOR.MINOR.PATCH` with the Windows executable, Apple Silicon and Intel macOS disk images, checksums, and the matching browser build archive. Because every merge becomes a user-facing release, do not merge documentation-only or intermediate work without assigning it the next version.
 
 The automated Windows executable is currently unsigned. Signed pilot releases still require the private Windows signing computer, `scripts\build_windows.ps1 -BuildInstaller -Sign`, `scripts\verify_windows_release.ps1`, and the release acceptance checklist. Publishing the browser archive to the existing ChatGPT Site remains a separate `Ship main` step in Codex.
 
