@@ -1,5 +1,6 @@
 const PYODIDE_VERSION = "0.29.4";
 const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
+const PYTHON_BASE = new URL("./python/", self.location.href);
 let runtimePromise;
 
 function status(message, progress) {
@@ -19,10 +20,10 @@ import micropip
 await micropip.install(["reportlab==4.4.7", "ezdxf==1.4.4"])
 `);
     status("Loading shared calculation engine…", 70);
-    const manifest = await (await fetch("/python/manifest.json", { cache: "no-cache" })).json();
+    const manifest = await (await fetch(new URL("manifest.json", PYTHON_BASE), { cache: "no-cache" })).json();
     pyodide.FS.mkdirTree("/app");
     for (const moduleName of manifest.modules) {
-      const response = await fetch(`/python/${moduleName}`, { cache: "no-cache" });
+      const response = await fetch(new URL(moduleName, PYTHON_BASE), { cache: "no-cache" });
       if (!response.ok) throw new Error(`Could not load ${moduleName}.`);
       pyodide.FS.writeFile(`/app/${moduleName}`, await response.text(), { encoding: "utf8" });
     }

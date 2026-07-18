@@ -20,6 +20,7 @@ dist/
 *.exe
 web/node_modules/
 web/.next/
+web/dist-pages/
 web/.wrangler/
 web/public/python/
 !web/build/

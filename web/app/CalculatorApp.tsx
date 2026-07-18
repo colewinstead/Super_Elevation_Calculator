@@ -120,7 +120,7 @@ export default function CalculatorApp() {
     pendingRef.current.clear();
     setRuntime("loading");
     setProgress(4);
-    const worker = new Worker("/pyodide-worker.js");
+    const worker = new Worker("pyodide-worker.js");
     workerRef.current = worker;
     worker.onmessage = (event) => {
       const message = event.data || {};
