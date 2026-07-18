@@ -69,6 +69,14 @@ class WebServiceTests(unittest.TestCase):
         self.assertTrue(pdf_result["content"].startswith(b"%PDF"))
         self.assertIn(b"SECTION", dxf_result["content"])
 
+    def test_lookup_returns_descriptive_display_labels(self):
+        results = super_service.calculate_curve(self.inputs())["results"]
+        station = super_service.lookup(results, "right", "10+50", "")
+        slope = super_service.lookup(results, "right", "", str(results["e"] * 100))
+        self.assertIn("decimal", station["station"]["slopes"]["left"])
+        self.assertEqual(slope["slope"]["decimal"], "+0.0800")
+        self.assertEqual(slope["lanes"]["left"][0]["label"], "Full-super range")
+
 
 if __name__ == "__main__":
     unittest.main()

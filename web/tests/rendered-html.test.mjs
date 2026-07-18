@@ -53,3 +53,17 @@ test("opens a save picker for exports with a download fallback", async () => {
   assert.match(source, /createWritable/);
   assert.match(source, /if \(!picker\) return "download"/);
 });
+
+test("renders lookup results as labeled engineering content instead of JSON", async () => {
+  const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /lookup-output/);
+  assert.match(source, /Full-super range|match\.label/);
+  assert.doesNotMatch(source, /JSON\.stringify\(lookupResult/);
+});
+
+test("uses the dark engineering workspace theme", async () => {
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /color-scheme: dark/);
+  assert.match(css, /--paper: #07100e/);
+  assert.match(css, /\.lookup-card/);
+});

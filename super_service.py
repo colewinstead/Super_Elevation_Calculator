@@ -176,13 +176,18 @@ def lookup(results: dict, direction: str, station_text: str = "", slope_text: st
                 lane: {
                     "percent": slope_at_station(points[lane], station),
                     "label": super_exports.format_slope_label(slope_at_station(points[lane], station)),
+                    "decimal": super_exports.slope_decimal(slope_at_station(points[lane], station)),
                 }
                 for lane in ("left", "right")
             },
         }
     if slope_text.strip():
         target = parse_slope_percent(slope_text)
-        response["slope"] = {"percent": target, "label": super_exports.format_slope_label(target)}
+        response["slope"] = {
+            "percent": target,
+            "label": super_exports.format_slope_label(target),
+            "decimal": super_exports.slope_decimal(target),
+        }
         for lane in ("left", "right"):
             matches = slope_matches(points[lane], target)
             rendered = []
@@ -192,9 +197,22 @@ def lookup(results: dict, direction: str, station_text: str = "", slope_text: st
                     range(len(matches)),
                     key=lambda index: _distance_to_range(matches[index], reference),
                 )
+            point_indexes = [index for index, (start, end) in enumerate(matches) if abs(end - start) <= 1e-6]
             for index, (start, end) in enumerate(matches):
+                if end - start > 1e-6:
+                    rate = abs(float(results.get("e", 0.0))) * 100.0
+                    label = "Full-super range" if abs(abs(target) - rate) <= 1e-6 else "Constant range"
+                elif len(point_indexes) == 1:
+                    label = "Station"
+                elif index == point_indexes[0]:
+                    label = "Entering"
+                elif index == point_indexes[-1]:
+                    label = "Exiting"
+                else:
+                    label = f"Match {point_indexes.index(index) + 1}"
                 rendered.append(
                     {
+                        "label": label,
                         "start": Super.format_result_station(results, start, True),
                         "end": Super.format_result_station(results, end, True),
                         "is_range": end - start > 1e-6,
