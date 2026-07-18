@@ -7,6 +7,7 @@ import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "
 
 type Dict = Record<string, any>;
 type RuntimeState = "loading" | "ready" | "error";
+const AUTO_CALC_DELAY_MS = 450;
 
 const INITIAL_INPUTS: Dict = {
   project_name: "",
@@ -53,6 +54,7 @@ export default function CalculatorApp() {
   const workerRef = useRef<Worker | null>(null);
   const pendingRef = useRef(new Map<number, { resolve: (value: any) => void; reject: (reason: Error) => void }>());
   const requestId = useRef(0);
+  const calculationSequence = useRef(0);
   const [runtime, setRuntime] = useState<RuntimeState>("loading");
   const [runtimeMessage, setRuntimeMessage] = useState("Starting private browser workspace…");
   const [progress, setProgress] = useState(4);
@@ -160,13 +162,69 @@ export default function CalculatorApp() {
   };
 
   const calculate = async () => {
+    const sequence = ++calculationSequence.current;
     const result = await run("Calculating", () => call("calculate", { inputs }));
-    if (result) {
+    if (result && sequence === calculationSequence.current) {
       setCalculation(result);
       setLookupResult(null);
       setDirty(true);
     }
   };
+
+  const calculationKey = useMemo(() => JSON.stringify({
+    curve_direction: inputs.curve_direction,
+    pc: inputs.pc,
+    pt: inputs.pt,
+    speed: inputs.speed,
+    radius: inputs.radius,
+    facility: inputs.facility,
+    area: inputs.area,
+    lane_width: inputs.lane_width,
+    lanes_rotated: inputs.lanes_rotated,
+    e_manual: inputs.e_manual,
+    friction: inputs.friction,
+    rel_grad: inputs.rel_grad,
+    normal_crown: inputs.normal_crown,
+    Lr_manual: inputs.Lr_manual,
+    Lt_manual: inputs.Lt_manual,
+    station_equations: inputs.station_equations,
+    alignment_station_range: inputs.alignment_station_range,
+    station_format: inputs.station_format,
+  }), [inputs]);
+
+  useEffect(() => {
+    if (runtime !== "ready") return;
+    const readyToCalculate = String(inputs.pc ?? "").trim()
+      && String(inputs.speed ?? "").trim()
+      && String(inputs.radius ?? "").trim();
+    const sequence = ++calculationSequence.current;
+    if (!readyToCalculate) {
+      setCalculation(null);
+      setLookupResult(null);
+      setBusy("");
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      setError("");
+      setNotice("");
+      setBusy("Calculating");
+      try {
+        const result = await call("calculate", { inputs });
+        if (sequence !== calculationSequence.current) return;
+        setCalculation(result);
+        setLookupResult(null);
+      } catch (reason) {
+        if (sequence === calculationSequence.current) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      } finally {
+        if (sequence === calculationSequence.current) setBusy("");
+      }
+    }, AUTO_CALC_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // calculationKey intentionally captures only values that affect calculation output.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calculationKey, runtime, call]);
 
   const applyPreset = (index: number, parsed = landxml) => {
     const preset = parsed?.curve_presets?.[index];
@@ -401,7 +459,7 @@ export default function CalculatorApp() {
           <button className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(!advancedOpen)}><span>Advanced settings</span><small>Optional criteria overrides and stationing</small><b>{advancedOpen ? "−" : "+"}</b></button>
           {advancedOpen && <div className="advanced-grid">{input("e_manual", "Manual e")}{input("friction", "Side friction")}{input("rel_grad", "Relative gradient")}{input("normal_crown", "Normal crown")}{input("Lr_manual", "Runoff Lr (ft)")}{input("Lt_manual", "Runout Lt (ft)")}{input("station_equations", "Station equations")}{input("alignment_station_range", "Internal station range")}</div>}
           <label className="field full"><span>Curve notes</span><textarea value={inputs.curve_notes} onChange={(e) => update("curve_notes", e.target.value)} rows={3} /></label>
-          <div className="compute-bar"><label className="check"><input type="checkbox" checked={inputs.station_format} onChange={(e) => update("station_format", e.target.checked)} /> Station format</label><button onClick={() => { setInputs((current) => ({ ...INITIAL_INPUTS, project_name: current.project_name, route_name: current.route_name })); setCalculation(null); }}>Clear curve</button><button className="primary" onClick={calculate} disabled={runtime !== "ready" || !!busy}>{busy || "Compute curve"}</button></div>
+          <div className="compute-bar"><label className="check"><input type="checkbox" checked={inputs.station_format} onChange={(e) => update("station_format", e.target.checked)} /> Station format</label><span className="auto-status">Calculates automatically</span><button onClick={() => { setInputs((current) => ({ ...INITIAL_INPUTS, project_name: current.project_name, route_name: current.route_name })); setCalculation(null); }}>Clear curve</button><button className="primary" onClick={calculate} disabled={runtime !== "ready" || !!busy}>{busy || (calculation ? "Recompute now" : "Compute now")}</button></div>
         </section>
 
         <section className="panel results-panel">

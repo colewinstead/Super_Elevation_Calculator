@@ -38,3 +38,10 @@ test("ships the Python worker and shared runtime manifest", async () => {
   assert.match(manifest, /super_service\.py/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
 });
+
+test("debounces automatic calculations when required inputs are ready", async () => {
+  const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /AUTO_CALC_DELAY_MS = 450/);
+  assert.match(source, /Calculates automatically/);
+  assert.match(source, /setTimeout\(async \(\) =>/);
+});
