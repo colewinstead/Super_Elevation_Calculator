@@ -1,5 +1,10 @@
 from app_info import CALCULATION_ENGINE_VERSION
-from criteria_info import criteria_metadata
+from criteria_info import (
+    applicable_drawings_label,
+    calculation_sources_label,
+    criteria_for_result,
+    criteria_metadata,
+)
 
 
 def parse_station(value: str) -> float:
@@ -1415,7 +1420,7 @@ def calculate_superelevation(
         reverse_crown_out_ft = pt_ft + 0.7 * L
         pnc_out_ft = reverse_crown_out_ft + Lt
 
-    return {
+    result = {
         "calculation_metadata": {
             "engine_version": CALCULATION_ENGINE_VERSION,
             "criteria": criteria_metadata(),
@@ -1485,13 +1490,19 @@ def calculate_superelevation(
             "total_transition": L + Lt,
         },
     }
+    result["calculation_metadata"]["criteria"] = criteria_for_result(result)
+    return result
 
 
 def format_results(results: dict, station_format: bool) -> list[str]:
     inputs = results.get("inputs", {})
     segments = results.get("segments", {})
+    criteria = criteria_for_result(results)
 
-    lines = ["--- Inputs ---"]
+    lines = ["--- Criteria References ---"]
+    lines.append(f"Applicable: {applicable_drawings_label(criteria)}")
+    lines.append(f"Calculation sources: {calculation_sources_label(criteria)}")
+    lines.append("\n--- Inputs ---")
     lines.append(f"PC station: {inputs.get('pc', '')}")
     lines.append(f"PT station: {inputs.get('pt', '') or 'n/a'}")
     lines.append(f"Design speed: {inputs.get('speed_mph', '')} mph")

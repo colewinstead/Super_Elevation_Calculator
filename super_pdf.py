@@ -9,6 +9,7 @@ from typing import Iterable
 
 import Super
 from app_info import APP_VERSION
+from criteria_info import applicable_drawings_label, calculation_sources_label, criteria_for_result
 from super_lane import build_lane_rows
 
 
@@ -116,6 +117,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         font_name: str = "Helvetica",
         font_size: float = 8,
     ) -> float:
+        c.setFont(font_name, font_size)
         words = text.split()
         if not words:
             c.drawString(x, y, text)
@@ -169,10 +171,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         results = curve.get("results") or {}
         calculation_metadata = results.get("calculation_metadata", {}) or {}
         engine_version = calculation_metadata.get("engine_version") or "legacy-unversioned"
-        criteria = calculation_metadata.get("criteria") or {
-            "profile_id": "legacy-unversioned",
-            "source_status": "SOURCE UNKNOWN: recalculate only after reviewing current criteria",
-        }
+        criteria = criteria_for_result(results)
         meta = curve.get("meta", {}) or {}
         notes = curve.get("notes", "")
         inputs = results.get("inputs", {}) or {}
@@ -186,15 +185,33 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         c.drawString(left, y, "Superelevation Transition Summary")
         y -= 0.23 * inch
         c.setFont("Helvetica", 8)
-        c.drawString(
+        y = draw_wrapped_text(
+            f"Application {APP_VERSION} | Calculation engine {engine_version}",
             left,
             y,
-            f"Application {APP_VERSION} | Calculation engine {engine_version} | Criteria {criteria['profile_id']}",
+            3.95 * inch,
+            0.12 * inch,
+            "Helvetica",
+            8,
         )
-        y -= 0.13 * inch
-        c.setFont("Helvetica-Bold", 7)
-        c.drawString(left, y, criteria["source_status"])
-        y -= 0.13 * inch
+        y = draw_wrapped_text(
+            f"Applicable: {applicable_drawings_label(criteria)}",
+            left,
+            y,
+            3.95 * inch,
+            0.12 * inch,
+            "Helvetica-Bold",
+            7.5,
+        )
+        y = draw_wrapped_text(
+            f"Calculation sources: {calculation_sources_label(criteria)}",
+            left,
+            y,
+            3.95 * inch,
+            0.11 * inch,
+            "Helvetica",
+            6.8,
+        )
         c.setFont("Helvetica", 8)
         c.drawString(left, y, f"Alignment: {meta.get('alignment_name', 'n/a')}")
         y -= 0.13 * inch

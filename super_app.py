@@ -221,28 +221,53 @@ class ModernSuperElevationUI(tk.Tk):
             wraplength=520,
             justify="left",
         ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 8))
-        url_value = tk.StringVar(value=update.download_url)
-        ttk.Entry(body, textvariable=url_value, state="readonly", width=72).grid(
-            row=3, column=0, columnspan=2, sticky="ew", pady=(0, 14)
-        )
-
         def close_dialog() -> None:
             self._update_dialog = None
             dialog.destroy()
 
         buttons = ttk.Frame(body, style="Panel.TFrame")
-        buttons.grid(row=4, column=0, columnspan=2, sticky="e")
+        buttons.grid(row=3, column=0, columnspan=2, sticky="e", pady=(6, 0))
         ttk.Button(buttons, text="Later", command=close_dialog).grid(row=0, column=0, padx=(0, 8))
+        copy_button = ttk.Button(buttons, text="Copy Download Link")
+        copy_button.configure(command=lambda: self._copy_update_download(update, dialog, copy_button))
+        copy_button.grid(row=0, column=1, padx=(0, 8))
         ttk.Button(
             buttons,
             text="Download Update",
             command=lambda: self._open_update_download(update, dialog, close_dialog),
             style="Primary.TButton",
-        ).grid(row=0, column=1)
+        ).grid(row=0, column=2)
         body.columnconfigure(0, weight=1)
         dialog.protocol("WM_DELETE_WINDOW", close_dialog)
         dialog.grab_set()
         dialog.focus_force()
+
+    def _copy_update_download(
+        self,
+        update: super_updates.UpdateInfo,
+        dialog: tk.Toplevel,
+        button: ttk.Button,
+    ) -> None:
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(update.download_url)
+            self.update_idletasks()
+            button.configure(text="Copied")
+            def reset_button() -> None:
+                try:
+                    if button.winfo_exists():
+                        button.configure(text="Copy Download Link")
+                except tk.TclError:
+                    pass
+
+            self.after(2000, reset_button)
+        except Exception as exc:
+            app_logging.record_exception("copy_update_download", exc)
+            messagebox.showerror(
+                "Copy Download Link",
+                "The link could not be copied. Select Download Update to open it in your browser.",
+                parent=dialog,
+            )
 
     def _open_update_download(
         self,
@@ -260,7 +285,7 @@ class ModernSuperElevationUI(tk.Tk):
             return
         messagebox.showerror(
             "Open Download",
-            "The browser could not be opened. Copy the download link from this window and open it manually.",
+            "The browser could not be opened. Select Copy Download Link and open it manually.",
             parent=dialog,
         )
 

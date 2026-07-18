@@ -47,7 +47,7 @@ button:disabled { opacity: .48; cursor: not-allowed; transform: none; }
 .step { margin: 0; color: var(--teal); font-family: var(--font-plex-mono), monospace; font-size: .7rem; font-weight: 700; }
 .dirty, .criteria-tag, .required-note { font-size: .65rem; font-weight: 800; border-radius: 999px; padding: 4px 8px; text-transform: uppercase; letter-spacing: .06em; }
 .dirty { color: #ffd589; background: #3a2a10; }
-.criteria-tag { color: #8be3d5; background: #12322c; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.criteria-tag { color: #8be3d5; background: #12322c; white-space: nowrap; }
 .required-note { color: var(--muted); }
 .button-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 16px; }
 .button { display: grid; place-items: center; }
@@ -95,6 +95,14 @@ button:disabled { opacity: .48; cursor: not-allowed; transform: none; }
 .metric-grid article { border: 1px solid var(--line); border-radius: 9px; padding: 11px; background: #101c19; }
 .metric-grid span, .metric-grid small { display: block; color: var(--muted); font-size: .62rem; font-weight: 700; text-transform: uppercase; }
 .metric-grid strong { display: block; margin: 4px 0; font: 600 1.1rem var(--font-plex-mono), monospace; color: #74dfcf; }
+.criteria-reference { margin: 10px 0 14px; padding: 12px; border: 1px solid #29433a; border-radius: 9px; background: #0a1814; }
+.criteria-reference > p { margin: 0 0 4px; color: var(--muted); font-size: .61rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; }
+.criteria-reference > strong { display: block; margin-bottom: 10px; color: #8be3d5; font-size: .76rem; line-height: 1.4; }
+.criteria-reference ul { display: grid; gap: 5px; margin: 0 0 10px; padding: 0; list-style: none; }
+.criteria-reference li { display: grid; grid-template-columns: minmax(100px, .7fr) minmax(150px, 1.3fr) auto; gap: 8px; align-items: baseline; font-size: .66rem; }
+.criteria-reference li span { color: var(--muted); }
+.criteria-reference li b { color: var(--ink); font-weight: 650; }
+.criteria-reference li em { color: var(--amber); font-style: normal; font-weight: 800; text-transform: uppercase; font-size: .56rem; }
 .result-tabs { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 8px; }
 .lane-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .lane-tables > div { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; }
