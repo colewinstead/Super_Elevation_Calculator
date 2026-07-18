@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Roadway superelevation calculations, design review, and CAD-ready exports in one Windows desktop app.</strong>
+  <strong>Roadway superelevation calculations, design review, and CAD-ready exports for Windows and the browser.</strong>
 </p>
 
 <p align="center">
@@ -71,6 +71,20 @@ Set-Location .\Super_Elevation_Calculator
 python -m pip install -r .\requirements.txt
 python .\super_app.py
 ```
+
+## Browser app
+
+The browser app runs the same Python calculation and export modules locally through Pyodide. Project data and LandXML content stay in the browser; no calculation server, account, database, or upload is required. The app can be served as static files from a free static host.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Create a production build with `npm run build`. The deployable files are written to `web/dist`. The build stages the shared Python modules from the repository, so calculation and export changes are made once and used by both the desktop and browser applications.
+
+The first browser visit downloads the Python runtime and scientific/export packages. After that initial load, calculations and file exports occur on the user's device. Saved `.superelevation.json` project files are portable between the desktop and browser versions.
 
 ## Export formats
 
@@ -153,6 +167,7 @@ LandXML points are interpreted as Northing/Easting and written to CAD as X=Easti
 | File | Purpose |
 |:--|:--|
 | [`super_app.py`](super_app.py) | Desktop application entry point |
+| [`super_service.py`](super_service.py) | Platform-neutral calculation, project, and export service |
 | [`Super.py`](Super.py) | Core superelevation calculation path |
 | [`super_landxml.py`](super_landxml.py) | LandXML parsing and station geometry |
 | [`super_exports.py`](super_exports.py) | Shared lane-event and export logic |
@@ -162,12 +177,13 @@ LandXML points are interpreted as Northing/Easting and written to CAD as X=Easti
 | [`app_info.py`](app_info.py) | Authoritative application and engine versions |
 | [`criteria_info.py`](criteria_info.py) | Criteria/source traceability metadata |
 | [`app_logging.py`](app_logging.py) | Per-user rotating diagnostic logging |
+| [`web`](web) | Browser-only React interface and Pyodide worker |
 
 ## Project-file compatibility
 
-Projects use JSON schema version 3. The application migrates schema v1 and v2 files in memory and preserves their calculation provenance as `legacy-unversioned`. It refuses project files created by a newer schema rather than silently discarding unknown data. Saves use a temporary file and atomic replacement to reduce corruption risk.
+Projects use JSON schema version 4. The application migrates schema v1, v2, and v3 files in memory and preserves older calculation provenance as `legacy-unversioned` when needed. It refuses project files created by a newer schema rather than silently discarding unknown data. Desktop saves use a temporary file and atomic replacement to reduce corruption risk.
 
-Opening and resaving an older project upgrades its container to schema v3; it does not retroactively claim that old calculations were produced by the current engine.
+Schema v4 can embed the selected LandXML text, original filename, and SHA-256 digest. This lets either application reopen the complete project without depending on a machine-specific XML path and detects accidental source corruption. Opening and resaving an older project upgrades its container to schema v4; it does not retroactively claim that old calculations were produced by the current engine.
 
 ## Logging and troubleshooting
 
@@ -252,6 +268,14 @@ Follow [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). In summary: app
 ```powershell
 python -m pip install -r .\requirements.txt
 python -m unittest -v
+```
+
+The browser parity suite builds the production app, renders its shell, runs the shared Python engine in Pyodide, checks an approved numeric vector, and generates CSV, PDF, and DXF outputs:
+
+```bash
+cd web
+npm install
+npm test
 ```
 
 The test suite covers calculation sharing, station formatting, lane signs, LandXML parsing, coordinate transforms, project persistence, ORD CSV mapping, and DXF generation.

@@ -5,6 +5,7 @@ import os
 import sys
 import tkinter as tk
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import Super
@@ -67,6 +68,7 @@ class ModernSuperElevationUI(tk.Tk):
         self._suspend_auto = False
         self._landxml_data: super_landxml.LandXMLData | None = None
         self._landxml_curve_presets: list[dict] = []
+        self._landxml_source: dict[str, str] | None = None
 
         self.vars = {
             "project_name": tk.StringVar(),
@@ -1168,6 +1170,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self._write_text(self.table, "")
         self._landxml_data = None
         self._landxml_curve_presets = []
+        self._landxml_source = None
         self.landxml_status.set("LandXML: none")
         self._refresh_landxml_curve_picker()
         self._update_advanced_summary()
@@ -1185,6 +1188,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             "curves": self.curves,
             "last_results": self.last_results,
             "last_meta": self.last_meta,
+            "landxml_source": self._landxml_source,
         }
 
     def _save_project(self) -> None:
@@ -1241,6 +1245,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self.last_meta = data.get("last_meta", {}) or {}
         self._landxml_data = None
         self._landxml_curve_presets = []
+        self._landxml_source = data.get("landxml_source")
         self._load_landxml_data(show_errors=False, autofill=False)
         if self.last_results:
             self._render_results(self.last_results)
@@ -1380,14 +1385,22 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         path = filedialog.askopenfilename(filetypes=[("LandXML", "*.xml"), ("XML files", "*.xml")], title="Select LandXML")
         if not path:
             return
+        try:
+            content = Path(path).read_text(encoding="utf-8")
+            source = super_project.make_landxml_source(os.path.basename(path), content)
+            super_landxml.parse_landxml_text(content, source["filename"])
+        except (OSError, ValueError) as exc:
+            self._show_operation_error("LandXML", "landxml", exc, path)
+            return
         self.vars["landxml_path"].set(path)
+        self._landxml_source = source
         self._load_landxml_data(show_errors=True, autofill=True)
         if self.last_results:
             self._render_results(self.last_results)
 
     def _load_landxml_data(self, show_errors: bool = False, autofill: bool = False) -> super_landxml.LandXMLData | None:
         path = self.vars["landxml_path"].get().strip()
-        if not path:
+        if not path and not self._landxml_source:
             self._landxml_data = None
             self._landxml_curve_presets = []
             self.landxml_status.set("LandXML: none")
@@ -1396,11 +1409,19 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             self._update_overlay_button()
             return None
         try:
-            data = super_landxml.load_landxml(path)
+            if self._landxml_source:
+                data = super_landxml.parse_landxml_text(
+                    self._landxml_source["content"], self._landxml_source["filename"]
+                )
+            else:
+                data = super_landxml.load_landxml(path)
+                content = Path(path).read_text(encoding="utf-8")
+                self._landxml_source = super_project.make_landxml_source(os.path.basename(path), content)
         except (OSError, ValueError, ET.ParseError) as exc:
             self._landxml_data = None
             self._landxml_curve_presets = []
-            self.landxml_status.set(f"LandXML: failed ({os.path.basename(path)})")
+            display_name = self._landxml_source["filename"] if self._landxml_source else os.path.basename(path)
+            self.landxml_status.set(f"LandXML: failed ({display_name})")
             self._refresh_landxml_curve_picker()
             self._update_advanced_summary()
             self._update_overlay_button()
@@ -1411,8 +1432,9 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self._landxml_curve_presets = data.curve_records()
         warning_suffix = f" | warnings: {len(data.warnings)}" if data.warnings else ""
         equation_suffix = f" | station equations: {len(data.station_equations)} (auto)" if data.station_equations else ""
+        display_name = self._landxml_source["filename"] if self._landxml_source else os.path.basename(path)
         self.landxml_status.set(
-            f"LandXML: {os.path.basename(path)} | {data.alignment_name or 'Unnamed'} | {data.linear_unit or 'unknown'} | curves: {len(self._landxml_curve_presets)}{equation_suffix}{warning_suffix}"
+            f"LandXML: {display_name} | {data.alignment_name or 'Unnamed'} | {data.linear_unit or 'unknown'} | curves: {len(self._landxml_curve_presets)}{equation_suffix}{warning_suffix}"
         )
         self._refresh_landxml_curve_picker()
         if self._landxml_curve_presets and autofill:

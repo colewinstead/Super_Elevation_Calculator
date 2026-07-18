@@ -18,6 +18,12 @@ dist/
 *.egg-info/
 *.app
 *.exe
+web/node_modules/
+web/.next/
+web/.wrangler/
+web/public/python/
+!web/build/
+!web/build/**
 
 
 # Tool caches

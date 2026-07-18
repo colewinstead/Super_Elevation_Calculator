@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import tempfile
 from pathlib import Path
@@ -10,7 +11,7 @@ from app_info import APP_VERSION, CALCULATION_ENGINE_VERSION
 from criteria_info import criteria_metadata
 
 
-PROJECT_VERSION = 3
+PROJECT_VERSION = 4
 
 
 class ProjectFormatError(ValueError):
@@ -97,6 +98,7 @@ def normalize_project(data: dict[str, Any]) -> dict[str, Any]:
         )
 
     legacy = version < PROJECT_VERSION
+    landxml_source = normalize_landxml_source(data.get("landxml_source"))
     return {
         "version": PROJECT_VERSION,
         "source_version": version,
@@ -109,14 +111,41 @@ def normalize_project(data: dict[str, Any]) -> dict[str, Any]:
         "last_results": data.get("last_results"),
         "last_meta": data.get("last_meta", {}) or {},
         "project_notes": data.get("project_notes", ""),
+        "landxml_source": landxml_source,
     }
 
 
-def load_project(path: str | Path) -> dict[str, Any]:
-    file_path = Path(path)
+def make_landxml_source(filename: str, content: str) -> dict[str, str]:
+    """Create the portable, integrity-checked LandXML record used by schema v4."""
+    if not isinstance(content, str) or not content.strip():
+        raise ProjectFormatError("Embedded LandXML content must be non-empty text.")
+    safe_name = Path(str(filename or "alignment.xml")).name or "alignment.xml"
+    return {
+        "filename": safe_name,
+        "encoding": "utf-8",
+        "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        "content": content,
+    }
+
+
+def normalize_landxml_source(value: object) -> dict[str, str] | None:
+    if value in (None, ""):
+        return None
+    if not isinstance(value, dict):
+        raise ProjectFormatError("Project 'landxml_source' must be an object or null.")
+    encoding = str(value.get("encoding") or "utf-8").lower()
+    if encoding != "utf-8":
+        raise ProjectFormatError("Embedded LandXML must use UTF-8 encoding.")
+    source = make_landxml_source(str(value.get("filename") or "alignment.xml"), value.get("content"))
+    supplied_hash = str(value.get("sha256") or "").lower()
+    if supplied_hash and supplied_hash != source["sha256"]:
+        raise ProjectFormatError("Embedded LandXML failed its SHA-256 integrity check.")
+    return source
+
+
+def loads_project(content: str) -> dict[str, Any]:
     try:
-        with file_path.open("r", encoding="utf-8") as handle:
-            raw = json.load(handle)
+        raw = json.loads(content)
     except json.JSONDecodeError as exc:
         raise ProjectFormatError(
             f"The project is not valid JSON (line {exc.lineno}, column {exc.colno})."
@@ -124,10 +153,21 @@ def load_project(path: str | Path) -> dict[str, Any]:
     return normalize_project(raw)
 
 
-def save_project(path: str | Path, data: dict[str, Any]) -> None:
-    file_path = Path(path)
+def dumps_project(data: dict[str, Any]) -> str:
     payload = normalize_project(data)
     payload["source_version"] = PROJECT_VERSION
+    return json.dumps(payload, indent=2) + "\n"
+
+
+def load_project(path: str | Path) -> dict[str, Any]:
+    file_path = Path(path)
+    with file_path.open("r", encoding="utf-8") as handle:
+        return loads_project(handle.read())
+
+
+def save_project(path: str | Path, data: dict[str, Any]) -> None:
+    file_path = Path(path)
+    serialized = dumps_project(data)
     file_path.parent.mkdir(parents=True, exist_ok=True)
     temp_name: str | None = None
     try:
@@ -135,8 +175,7 @@ def save_project(path: str | Path, data: dict[str, Any]) -> None:
             "w", encoding="utf-8", dir=file_path.parent, prefix=f".{file_path.name}.", suffix=".tmp", delete=False
         ) as handle:
             temp_name = handle.name
-            json.dump(payload, handle, indent=2)
-            handle.write("\n")
+            handle.write(serialized)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_name, file_path)
