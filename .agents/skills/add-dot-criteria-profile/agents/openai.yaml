@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add DOT Criteria Profile"
+  short_description: "Safely add and verify another state DOT profile"
+  default_prompt: "Use $add-dot-criteria-profile to add a versioned state DOT standards profile to the Superelevation Calculator."
