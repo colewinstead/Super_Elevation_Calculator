@@ -12,13 +12,11 @@ from app_info import APP_VERSION
 from super_lane import build_lane_rows
 
 
-def _asset_constants() -> tuple[str, str, str, dict[str, str]]:
+def _asset_constants() -> tuple[str, dict[str, str]]:
     import super_ui
 
     return (
         getattr(super_ui, "DIAGRAM_PNG_B64", ""),
-        getattr(super_ui, "MDOT_PNG_B64", ""),
-        getattr(super_ui, "STANTEC_PNG_B64", ""),
         getattr(super_ui, "STAMP_PNG_B64", {}),
     )
 
@@ -33,7 +31,7 @@ def _decode_asset(value: str) -> bytes | None:
 
 
 def stamp_images() -> dict[str, bytes]:
-    _, _, _, stamp_b64 = _asset_constants()
+    _, stamp_b64 = _asset_constants()
     images: dict[str, bytes] = {}
     for key, value in stamp_b64.items():
         decoded = _decode_asset(value)
@@ -43,7 +41,7 @@ def stamp_images() -> dict[str, bytes]:
 
 
 def select_stamps(results: dict) -> list[str]:
-    _, _, _, stamp_b64 = _asset_constants()
+    _, stamp_b64 = _asset_constants()
     inputs = results.get("inputs", {})
     area = str(inputs.get("area_type", "")).lower()
     facility = str(inputs.get("facility", "")).lower()
@@ -92,10 +90,8 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
     from reportlab.pdfgen import canvas
 
     curve_list = list(curves)
-    diagram_b64, mdot_b64, stantec_b64, _ = _asset_constants()
+    diagram_b64, _ = _asset_constants()
     diagram_bytes = _decode_asset(diagram_b64)
-    mdot_bytes = _decode_asset(mdot_b64)
-    stantec_bytes = _decode_asset(stantec_b64)
     stamps = stamp_images()
 
     c = canvas.Canvas(path, pagesize=letter)
@@ -185,19 +181,6 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         left = margin
         right_x = 4.75 * inch
         y = height - margin
-
-        logos = []
-        for asset in (stantec_bytes, mdot_bytes):
-            if asset:
-                img = ImageReader(io.BytesIO(asset))
-                iw, ih = img.getSize()
-                scale = min((1.2 * inch) / iw, (0.55 * inch) / ih)
-                logos.append((img, iw * scale, ih * scale))
-        logo_x = width - margin
-        for img, img_w, img_h in reversed(logos):
-            logo_x -= img_w
-            c.drawImage(img, logo_x, height - margin - img_h + 0.05 * inch, img_w, img_h, preserveAspectRatio=True)
-            logo_x -= 0.08 * inch
 
         c.setFont("Helvetica-Bold", 14)
         c.drawString(left, y, "Superelevation Transition Summary")
