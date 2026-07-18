@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 import math
 import os
+import queue
 import sys
+import threading
 import tkinter as tk
 import xml.etree.ElementTree as ET
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -17,6 +21,7 @@ import super_exports
 import super_landxml
 import super_pdf
 import super_project
+import super_updates
 from super_lane import build_lane_rows, lane_profile_points, parse_slope_percent, slope_at_station, slope_matches
 
 
@@ -69,6 +74,8 @@ class ModernSuperElevationUI(tk.Tk):
         self._landxml_data: super_landxml.LandXMLData | None = None
         self._landxml_curve_presets: list[dict] = []
         self._landxml_source: dict[str, str] | None = None
+        self._update_result_queue: queue.Queue[super_updates.UpdateInfo | None] = queue.Queue(maxsize=1)
+        self._update_dialog: tk.Toplevel | None = None
 
         self.vars = {
             "project_name": tk.StringVar(),
@@ -114,6 +121,7 @@ class ModernSuperElevationUI(tk.Tk):
         self._build_layout()
         self._setup_auto_handlers()
         self._update_overlay_button()
+        self.after(750, self._start_update_check)
         if IS_MACOS:
             self.after_idle(self._maximize_window)
 
@@ -155,6 +163,106 @@ class ModernSuperElevationUI(tk.Tk):
                 self.attributes("-zoomed", True)
             except tk.TclError:
                 pass
+
+    def _start_update_check(self) -> None:
+        """Check once per launch without blocking or calling Tk from the worker."""
+        worker = threading.Thread(
+            target=self._check_for_update_worker,
+            name="superelevation-update-check",
+            daemon=True,
+        )
+        worker.start()
+        self.after(100, self._poll_update_check)
+
+    def _check_for_update_worker(self) -> None:
+        self._update_result_queue.put(super_updates.check_for_update())
+
+    def _poll_update_check(self) -> None:
+        try:
+            update = self._update_result_queue.get_nowait()
+        except queue.Empty:
+            self.after(100, self._poll_update_check)
+            return
+        if update is not None:
+            self._show_update_available(update)
+
+    def _show_update_available(self, update: super_updates.UpdateInfo) -> None:
+        """Offer the matching release download while leaving installation manual."""
+        if self._update_dialog is not None and self._update_dialog.winfo_exists():
+            self._update_dialog.lift()
+            return
+
+        dialog = tk.Toplevel(self)
+        self._update_dialog = dialog
+        dialog.title("Update Available")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.configure(background=DARK_PANEL)
+
+        body = ttk.Frame(dialog, style="Panel.TFrame", padding=16)
+        body.grid(row=0, column=0, sticky="nsew")
+        ttk.Label(body, text="A newer release is available", style="Header.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky="w"
+        )
+        ttk.Label(
+            body,
+            text=(
+                f"You are using version {update.current_version}. "
+                f"Version {update.latest_version} is ready to download."
+            ),
+            style="Panel.TLabel",
+            wraplength=520,
+            justify="left",
+        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(8, 12))
+        ttk.Label(
+            body,
+            text="The download opens in your browser. Install or replace the application manually.",
+            style="Muted.Panel.TLabel",
+            wraplength=520,
+            justify="left",
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        url_value = tk.StringVar(value=update.download_url)
+        ttk.Entry(body, textvariable=url_value, state="readonly", width=72).grid(
+            row=3, column=0, columnspan=2, sticky="ew", pady=(0, 14)
+        )
+
+        def close_dialog() -> None:
+            self._update_dialog = None
+            dialog.destroy()
+
+        buttons = ttk.Frame(body, style="Panel.TFrame")
+        buttons.grid(row=4, column=0, columnspan=2, sticky="e")
+        ttk.Button(buttons, text="Later", command=close_dialog).grid(row=0, column=0, padx=(0, 8))
+        ttk.Button(
+            buttons,
+            text="Download Update",
+            command=lambda: self._open_update_download(update, dialog, close_dialog),
+            style="Primary.TButton",
+        ).grid(row=0, column=1)
+        body.columnconfigure(0, weight=1)
+        dialog.protocol("WM_DELETE_WINDOW", close_dialog)
+        dialog.grab_set()
+        dialog.focus_force()
+
+    def _open_update_download(
+        self,
+        update: super_updates.UpdateInfo,
+        dialog: tk.Toplevel,
+        close_dialog: Callable[[], None],
+    ) -> None:
+        try:
+            opened = webbrowser.open_new_tab(update.download_url)
+        except Exception as exc:
+            app_logging.record_exception("open_update_download", exc)
+            opened = False
+        if opened:
+            close_dialog()
+            return
+        messagebox.showerror(
+            "Open Download",
+            "The browser could not be opened. Copy the download link from this window and open it manually.",
+            parent=dialog,
+        )
 
     def _configure_style(self) -> None:
         self.configure(background=DARK_BG)

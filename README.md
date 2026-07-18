@@ -63,7 +63,7 @@ Download the latest Windows executable or native macOS disk image from [GitHub R
 
 Requires Python 3.11 or newer.
 
-The current application release is **1.3.0** and the calculation-engine release is **1.0.0**. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+The current application release is **1.4.0** and the calculation-engine release is **1.0.0**. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
 
 ```powershell
 git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
@@ -224,6 +224,12 @@ Every pull request targeting `main` must increase `APP_VERSION` in `app_info.py`
 
 The automated Windows executable is currently unsigned. Signed pilot releases still require the private Windows signing computer, `scripts\build_windows.ps1 -BuildInstaller -Sign`, `scripts\verify_windows_release.ps1`, and the release acceptance checklist. Publishing the browser archive to the existing ChatGPT Site remains a separate `Ship main` step in Codex.
 
+### Desktop update checks
+
+Each desktop launch makes one background HTTPS request to GitHub's public latest-release endpoint after the application window opens. The check sends no project, LandXML, calculation, file-path, or telemetry data. It remains silent when the installed version is current or when GitHub cannot be reached.
+
+When a newer release is available, the application displays the current and latest versions and offers the matching direct download: the Windows executable, Apple Silicon DMG, or Intel DMG. The browser performs the download, and installation or replacement remains manual. The application never silently downloads, installs, or replaces software.
+
 To also build the optional per-user installer, install Inno Setup 6 and run:
 
 ```powershell
@@ -277,7 +283,7 @@ Before paid distribution, review the [current Inno Setup commercial-license guid
 
 ## Release procedure
 
-Follow [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). In summary: approve engineering traceability, update `app_info.py`, run all tests, build on Windows, exercise every file workflow from the built executable, sign the EXE/installer, verify signatures and checksums on a clean pilot machine, archive the validation evidence, and publish immutable release assets with release notes. Pilot updates are manual, controlled releases; the application does not silently download or install updates.
+Follow [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md). In summary: approve engineering traceability, update `app_info.py`, run all tests, build on Windows, exercise every file workflow from the built executable, sign the EXE/installer, verify signatures and checksums on a clean pilot machine, archive the validation evidence, and publish immutable release assets with release notes. The launch-time checker only notifies users and opens a browser download; pilot installation and rollback remain manual and controlled.
 
 ## Tests
 

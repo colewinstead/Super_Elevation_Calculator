@@ -62,6 +62,7 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 
 - [ ] Publish immutable, versioned Windows, macOS, browser, installer, and checksum assets with release notes to the approved delivery channel.
 - [ ] Verify downloaded hashes and signatures on a clean pilot machine.
+- [ ] Launch the current desktop release with GitHub available and unavailable; confirm the update check stays silent, then test a mocked older build and confirm its download points to the correct Windows or macOS asset.
 - [ ] Provide installation, onboarding, limitations, privacy/log-sharing, backup, update, and rollback instructions.
 - [ ] Record the 3–5 authorized pilot users, their application versions, and the support contact.
 - [ ] Retain the prior signed installer for rollback; do not silently auto-update pilot machines.

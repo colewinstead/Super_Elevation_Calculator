@@ -71,9 +71,9 @@ Phase 1 contains only work needed to run a controlled, supported pilot. “Block
 
 ## Current update, licensing, and data posture
 
-- Update delivery is manual through release assets. There is no background network check or auto-install behavior.
+- Every desktop launch performs one non-blocking request to GitHub's public latest-release endpoint. A newer version opens an explicit download prompt; current-version, offline, and invalid responses remain silent. Download, installation, and rollback remain manual, with no background installer behavior.
 - The repository has no open-source license and no commercial EULA. Public visibility does not grant reuse rights, but it also does not supply customer contract terms.
-- Calculation and project processing is local. No telemetry or upload code was found. Exports and logs remain wherever the user saves them; diagnostic logs contain exception details and can contain local file paths.
+- Calculation and project processing is local. The update request sends no project, LandXML, calculation, file-path, or telemetry data. Exports and logs remain wherever the user saves them; diagnostic logs contain exception details and can contain local file paths.
 - Dependencies are range-pinned, not hash-locked, and there is no SBOM or vulnerability-response process.
 
 ## Items that still block a paid pilot
