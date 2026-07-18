@@ -15,7 +15,6 @@ const AUTO_CALC_DELAY_MS = 450;
 const EXPORT_DETAILS: Record<string, { suffix: string; description: string }> = {
   export_pdf: { suffix: "-report", description: "PDF calculation report" },
   export_ord_csv: { suffix: "-ord", description: "OpenRoads superelevation CSV" },
-  export_detail_dxf: { suffix: "-detail", description: "Superelevation detail DXF" },
   export_overlay_dxf: { suffix: "-overlay", description: "LandXML overlay DXF" },
 };
 
@@ -103,6 +102,7 @@ export default function CalculatorApp() {
   const [selectedCurve, setSelectedCurve] = useState(-1);
   const [landxml, setLandxml] = useState<Dict | null>(null);
   const [landxmlPreset, setLandxmlPreset] = useState(0);
+  const [calculationRequest, setCalculationRequest] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [lookupStation, setLookupStation] = useState("");
   const [lookupSlope, setLookupSlope] = useState("");
@@ -262,7 +262,7 @@ export default function CalculatorApp() {
     return () => window.clearTimeout(timer);
     // calculationKey intentionally captures only values that affect calculation output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calculationKey, runtime, call]);
+  }, [calculationKey, calculationRequest, runtime, call]);
 
   const applyPreset = (index: number, parsed = landxml) => {
     const preset = parsed?.curve_presets?.[index];
@@ -281,6 +281,7 @@ export default function CalculatorApp() {
       route_name: current.route_name || parsed.summary?.alignment_name || "",
     }));
     setCalculation(null);
+    setCalculationRequest((request) => request + 1);
     setDirty(true);
   };
 
@@ -527,7 +528,7 @@ export default function CalculatorApp() {
         </section>
       </div>
 
-      <section className="exports panel"><div><p className="step">04</p><h2>Review & export</h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-fields"><label><span>LandXML source CRS</span><select value={sourceCrs} onChange={(e) => setSourceCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label><label><span>Destination CRS</span><select value={targetCrs} onChange={(e) => setTargetCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV</button><button onClick={() => performExport("export_detail_dxf", "dxf", "application/dxf")}>Detail DXF</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF</button></div></section>
+      <section className="exports panel"><div><p className="step">04</p><h2>Review & export</h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-fields"><label><span>LandXML source CRS</span><select value={sourceCrs} onChange={(e) => setSourceCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label><label><span>Destination CRS</span><select value={targetCrs} onChange={(e) => setTargetCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF</button></div></section>
 
       <footer><p><strong>Engineering aid.</strong> Validate criteria, stationing, coordinate systems, lane naming, and exported geometry against governing standards and the project design file.</p><p>No account · No upload · Browser-only processing</p></footer>
     </main>
