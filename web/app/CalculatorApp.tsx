@@ -19,6 +19,7 @@ const EXPORT_DETAILS: Record<string, { suffix: string; description: string }> = 
 };
 
 const INITIAL_INPUTS: Dict = {
+  criteria_profile: "mdot-rdsd-2026-04-22",
   project_name: "",
   route_name: "",
   alignment_name: "",
@@ -177,6 +178,20 @@ export default function CalculatorApp() {
     setDirty(true);
   };
 
+  const updateCriteriaProfile = (profileId: string) => {
+    const tdot = profileId.startsWith("tdot");
+    setInputs((current) => ({
+      ...current,
+      criteria_profile: profileId,
+      facility: tdot ? "undivided" : "centerline",
+      area: tdot && current.area === "local" ? "rural" : current.area,
+      speed: "",
+    }));
+    setCalculation(null);
+    setLookupResult(null);
+    setDirty(true);
+  };
+
   const meta = useMemo(() => ({
     project_name: inputs.project_name?.trim() || "Unnamed project",
     route_name: inputs.route_name?.trim() || "Unnamed route",
@@ -210,6 +225,7 @@ export default function CalculatorApp() {
   };
 
   const calculationKey = useMemo(() => JSON.stringify({
+    criteria_profile: inputs.criteria_profile,
     curve_direction: inputs.curve_direction,
     pc: inputs.pc,
     pt: inputs.pt,
@@ -324,6 +340,7 @@ export default function CalculatorApp() {
     setInputs((current) => ({
       ...current,
       ...curve.meta,
+      criteria_profile: values.criteria_profile ?? curve.results?.calculation_metadata?.criteria?.profile_id ?? "mdot-rdsd-2026-04-22",
       pc: values.pc ?? "", pt: values.pt ?? "", speed: String(values.speed_mph ?? ""), radius: String(values.radius_ft ?? ""),
       facility: values.facility ?? "centerline", area: values.area_type ?? "rural", lane_width: String(values.lane_width_ft ?? "12"),
       lanes_rotated: String(values.lanes_rotated ?? "2"), e_manual: values.e_manual == null ? "" : String(values.e_manual),
@@ -364,7 +381,7 @@ export default function CalculatorApp() {
       version: 4,
       application_version: manifest?.application_version,
       calculation_engine_version: manifest?.calculation_engine_version,
-      criteria: manifest?.criteria,
+      criteria: calculation?.results?.calculation_metadata?.criteria || manifest?.criteria,
       vars: inputs,
       curves,
       last_results: calculation?.results || null,
@@ -460,11 +477,18 @@ export default function CalculatorApp() {
   const result = calculation?.results;
   const lanes = calculation?.lanes || {};
   const criteria = result?.calculation_metadata?.criteria || {};
+  const activeProfileId = inputs.criteria_profile || "mdot-rdsd-2026-04-22";
+  const activeProfile = manifest?.criteria_profiles?.find((profile: Dict) => profile.profile_id === activeProfileId);
+  const profileOptions = manifest?.options?.profiles?.[activeProfileId] || {};
+  const isTdot = activeProfileId.startsWith("tdot");
+  const speedOptions = isTdot && inputs.area === "urban"
+    ? (profileOptions.urban_speed || profileOptions.speed || [])
+    : (profileOptions.speed || manifest?.options?.speed || []);
   const applicableDrawings: string[] = criteria.applicable_standard_drawings || [];
   const criteriaSources: Dict[] = criteria.calculation_sources || [];
   const applicableLabel = applicableDrawings.length
     ? applicableDrawings.join(" / ")
-    : "No mapped MDOT standard drawing";
+    : "No mapped standard drawing";
 
   return (
     <main className="app-shell">
@@ -507,12 +531,13 @@ export default function CalculatorApp() {
           <div className="panel-heading"><div><p className="step">02</p><h2>Curve inputs</h2></div><span className="required-note">* Required</span></div>
           {(landxml?.curve_presets?.length || 0) > 0 && <label className="field full"><span>LandXML curve</span><select value={landxmlPreset} onChange={(e) => applyPreset(Number(e.target.value))}>{landxml?.curve_presets?.map((preset: Dict, index: number) => <option value={index} key={index}>{preset.curve_name} · {preset.curve_direction} · R {preset.radius_ft}</option>)}</select></label>}
           <div className="form-grid">{input("alignment_name", "Alignment name")}{input("curve_name", "Curve name")}
+            <label className="field full"><span>Governing standard</span><select value={activeProfileId} onChange={(e) => updateCriteriaProfile(e.target.value)}>{manifest?.criteria_profiles?.map((profile: Dict) => <option value={profile.profile_id} key={profile.profile_id}>{profile.governing_authority} · {profile.revision}</option>)}</select><small>{activeProfile?.profile_name}</small></label>
             <label className="field"><span>Curve direction</span><select value={inputs.curve_direction} onChange={(e) => update("curve_direction", e.target.value)}><option value="left">Left</option><option value="right">Right</option></select></label>
             {input("pc", "PC station", true)}{input("pt", "PT station")}
-            <label className="field"><span>Design speed <b>*</b></span><select value={inputs.speed} onChange={(e) => update("speed", e.target.value)}><option value="">Select mph</option>{manifest?.options?.speed?.map((speed: string) => <option key={speed}>{speed}</option>)}</select></label>
+            <label className="field"><span>Design speed <b>*</b></span><select value={inputs.speed} onChange={(e) => update("speed", e.target.value)}><option value="">Select mph</option>{speedOptions.map((speed: string) => <option key={speed}>{speed}</option>)}</select></label>
             {input("radius", "Curve radius (ft)", true, "number")}
-            <label className="field"><span>Facility / rotation</span><select value={inputs.facility} disabled={inputs.area === "local"} onChange={(e) => update("facility", e.target.value)}><option value="centerline">Centerline</option><option value="outside edge">Outside edge</option></select></label>
-            <label className="field"><span>Area type</span><select value={inputs.area} onChange={(e) => update("area", e.target.value)}><option value="rural">Rural</option><option value="urban">Urban</option><option value="local">Local</option></select></label>
+            <label className="field"><span>{isTdot ? "Roadway layout" : "Facility / rotation"}</span><select value={inputs.facility} disabled={!isTdot && inputs.area === "local"} onChange={(e) => update("facility", e.target.value)}>{(profileOptions.facility || manifest?.options?.facility || []).map((value: string) => <option value={value} key={value}>{value.replace(/\b\w/g, (letter) => letter.toUpperCase())}</option>)}</select></label>
+            <label className="field"><span>Area type</span><select value={inputs.area} onChange={(e) => { const area = e.target.value; setInputs((current) => ({ ...current, area, speed: isTdot && area === "urban" && Number(current.speed) > 60 ? "" : current.speed })); setDirty(true); }}>{(profileOptions.area || manifest?.options?.area || []).map((value: string) => <option value={value} key={value}>{value.replace(/\b\w/g, (letter) => letter.toUpperCase())}</option>)}</select></label>
             {input("lane_width", "Lane width (ft)", false, "number")}{input("lanes_rotated", "Lanes rotated", false, "number")}
           </div>
           <button className="advanced-toggle" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(!advancedOpen)}><span>Advanced settings</span><small>Optional criteria overrides and stationing</small><b>{advancedOpen ? "−" : "+"}</b></button>
@@ -522,7 +547,7 @@ export default function CalculatorApp() {
         </section>
 
         <section className="panel results-panel">
-          <div className="panel-heading"><div><p className="step">03</p><h2>Results</h2></div>{result && <span className="criteria-tag">MDOT sources recorded</span>}</div>
+          <div className="panel-heading"><div><p className="step">03</p><h2>Results</h2></div>{result && <span className="criteria-tag">{criteria.governing_authority || "Criteria"} sources recorded</span>}</div>
           {!result ? <div className="results-empty"><div className="road-crown"><i></i><i></i></div><h3>Ready for curve inputs</h3><p>Enter PC, speed, and radius to calculate transition stations and signed lane slopes.</p></div> : <>
             <div className="metric-grid"><article><span>Rate e</span><strong>{Number(result.e || 0).toFixed(4)}</strong><small>{result.e_source || "automatic"}</small></article><article><span>Runoff Lr</span><strong>{Number(result.Lr || 0).toFixed(2)}′</strong><small>{inputs.Lr_manual ? "override" : "automatic"}</small></article><article><span>Runout Lt</span><strong>{Number(result.Lt || 0).toFixed(2)}′</strong><small>{inputs.Lt_manual ? "override" : "automatic"}</small></article></div>
             <div className="criteria-reference">
@@ -530,6 +555,7 @@ export default function CalculatorApp() {
               <p>Calculation sources</p>
               <ul>{criteriaSources.map((source: Dict, index: number) => <li key={`${source.component}-${source.reference}-${index}`}><span>{source.component}</span><b>{source.reference}</b>{source.mode === "user_override" && <em>User override</em>}</li>)}</ul>
             </div>
+            {(result.warnings || []).length > 0 && <div className="result-warning"><strong>Engineering review</strong><ul>{result.warnings.map((warning: string, index: number) => <li key={index}>{warning}</li>)}</ul></div>}
             <div className="result-tabs"><h3>Lane events</h3><label className="check"><input type="checkbox" checked={inputs.station_format} onChange={(e) => update("station_format", e.target.checked)} /> Station labels</label></div>
             <div className="lane-tables">{(["left", "right"] as const).map((lane) => <div key={lane}><h4>{lane} lane</h4><table><thead><tr><th>Point</th><th>Station</th><th>Slope</th></tr></thead><tbody>{(lanes[lane] || []).map((row: Dict, index: number) => <tr key={index}><td>{row.label}</td><td>{row.station}</td><td className={String(row.slope_label).startsWith("+") ? "positive" : ""}>{row.slope_label}</td></tr>)}</tbody></table></div>)}</div>
             <div className="lookup"><h3>Engineering lookup</h3><div><input aria-label="Lookup station" placeholder="Station" value={lookupStation} onChange={(e) => setLookupStation(e.target.value)} /><input aria-label="Lookup superelevation" placeholder="Super (2%, 2, or 0.02)" value={lookupSlope} onChange={(e) => setLookupSlope(e.target.value)} /><button onClick={performLookup}>Lookup</button></div>{lookupResult && <div className="lookup-output">

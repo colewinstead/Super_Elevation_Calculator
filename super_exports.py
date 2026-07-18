@@ -96,11 +96,16 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
     reverse_crown_out = results.get("reverse_crown_out_ft")
     reverse_crown_out = None if reverse_crown_out is None else float(reverse_crown_out)
 
-    pc = reverse_crown + 0.7 * L
+    pc = float(results.get("pc_ft", reverse_crown + 0.7 * L) or 0.0)
     full_super_pc = float(results.get("full_super_ft", 0.0) or 0.0)
     full_super_pt = results.get("full_super_out_ft")
     full_super_pt = None if full_super_pt is None else float(full_super_pt)
-    pt = reverse_crown_out - 0.7 * L if reverse_crown_out is not None else None
+    stored_pt = results.get("pt_ft")
+    pt = (
+        float(stored_pt)
+        if stored_pt is not None
+        else (reverse_crown_out - 0.7 * L if reverse_crown_out is not None else None)
+    )
 
     nc_pct = normal_crown * 100.0
     e_pct = e * 100.0
@@ -144,6 +149,74 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
                     )
                 )
             return finish(rows)
+
+        if results.get("transition_method") == "tdot_simple_curve_half_total":
+            start = float(results.get("pnc_ft", pc) or pc)
+            zero = float(results.get("zero_crown_ft", reverse_crown) or reverse_crown)
+            reverse_section = float(results.get("reverse_section_ft", zero + Lt) or (zero + Lt))
+            end = results.get("pnc_out_ft")
+            end = None if end is None else float(end)
+            zero_out = results.get("zero_crown_out_ft")
+            zero_out = None if zero_out is None else float(zero_out)
+            reverse_section_out = results.get("reverse_section_out_ft")
+            reverse_section_out = None if reverse_section_out is None else float(reverse_section_out)
+
+            if side == outside:
+                pc_fraction = 0.0 if L <= 0 else max(0.0, min(1.0, (pc - zero) / L))
+                rows.extend(
+                    [
+                        _make_row("NC", start, -nc_pct, "Start of total transition", "Normal crown", station_format),
+                        _make_row("0%", zero, 0.0, "Start of runoff", "Reverse crown", station_format),
+                        _make_row("RC", reverse_section, nc_pct, "Reverse-crown section", "Reverse crown section", station_format),
+                        _make_row("PC", pc, final_sign * e_pct * pc_fraction, "Simple curve", "PC", station_format),
+                        _make_row("FULL SUPER", full_super_pc, final_sign * e_pct, "One-half total transition after PC", "Full super", station_format),
+                    ]
+                )
+                if pt is not None and full_super_pt is not None and zero_out is not None and end is not None:
+                    pt_fraction = 0.0 if L <= 0 else max(0.0, min(1.0, (zero_out - pt) / L))
+                    rows.extend(
+                        [
+                            _make_row("FULL SUPER", full_super_pt, final_sign * e_pct, "One-half total transition before PT", "End full super", station_format),
+                            _make_row("PT", pt, final_sign * e_pct * pt_fraction, "Simple curve", "PT", station_format),
+                        ]
+                    )
+                    if reverse_section_out is not None:
+                        rows.append(_make_row("RC", reverse_section_out, nc_pct, "Reverse-crown section", "Reverse crown section", station_format))
+                    rows.extend(
+                        [
+                            _make_row("0%", zero_out, 0.0, "End of runoff", "End runoff", station_format),
+                            _make_row("NC", end, -nc_pct, "End of total transition", "Back to normal crown", station_format),
+                        ]
+                    )
+            else:
+                pc_fraction = 0.0
+                if full_super_pc > reverse_section:
+                    pc_fraction = max(0.0, min(1.0, (pc - reverse_section) / (full_super_pc - reverse_section)))
+                pc_slope = -nc_pct + (-e_pct + nc_pct) * pc_fraction
+                rows.extend(
+                    [
+                        _make_row("NC", start, -nc_pct, "Start of total transition", "Normal crown", station_format),
+                        _make_row("RC", reverse_section, -nc_pct, "Reverse-crown section", "Reverse crown section", station_format),
+                        _make_row("PC", pc, pc_slope, "Simple curve", "PC", station_format),
+                        _make_row("FULL SUPER", full_super_pc, -e_pct, "One-half total transition after PC", "Full super", station_format),
+                    ]
+                )
+                if pt is not None and full_super_pt is not None and end is not None:
+                    exit_reverse = reverse_section_out if reverse_section_out is not None else end
+                    pt_fraction = 0.0
+                    if exit_reverse > full_super_pt:
+                        pt_fraction = max(0.0, min(1.0, (pt - full_super_pt) / (exit_reverse - full_super_pt)))
+                    pt_slope = -e_pct + (-nc_pct + e_pct) * pt_fraction
+                    rows.extend(
+                        [
+                            _make_row("FULL SUPER", full_super_pt, -e_pct, "One-half total transition before PT", "End full super", station_format),
+                            _make_row("PT", pt, pt_slope, "Simple curve", "PT", station_format),
+                            _make_row("NC", exit_reverse, -nc_pct, "Reverse-crown section", "Back to normal crown", station_format),
+                            _make_row("NC", end, -nc_pct, "End of total transition", "Back to normal crown", station_format),
+                        ]
+                    )
+            rows.sort(key=lambda row: float(row.get("station_ft") or 0.0))
+            return rows
 
         if reverse_crown_case:
             start_station = reverse_crown - Lt
@@ -268,14 +341,19 @@ def build_normalized_rows(curves: Iterable[dict], station_format: bool = True) -
 
 
 def write_ord_csv(handle: TextIO, curves: Iterable[dict]) -> list[str]:
+    curve_list = list(curves)
     warnings = [
         "ORD CSV format follows Bentley Import Superelevation documentation. Verify lane names match existing ORD superelevation lanes before import.",
         "Stations after alignment equations use ORD region suffixes R2, R3, and so on.",
         "This export is schema-confirmed but still needs real in-ORD round-trip validation.",
     ]
+    for curve in curve_list:
+        for warning in (curve.get("results", {}) or {}).get("warnings", []) or []:
+            if warning not in warnings:
+                warnings.append(str(warning))
     writer = csv.DictWriter(handle, fieldnames=ORD_HEADERS)
     writer.writeheader()
-    for row in build_normalized_rows(curves):
+    for row in build_normalized_rows(curve_list):
         if not row["station_label"] or row["station_label"] == "n/a":
             continue
         station_label = str(row["station_label"])

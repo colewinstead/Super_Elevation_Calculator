@@ -54,6 +54,10 @@ button:disabled { opacity: .48; cursor: not-allowed; transform: none; }
 .field { display: grid; gap: 5px; margin-bottom: 12px; }
 .field span, .crs-fields span { color: #9aada6; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .055em; }
 .field b { color: var(--red); }
+.field small { color: #789189; font-size: .72rem; line-height: 1.35; }
+.result-warning { margin: 12px 0; padding: 12px 14px; border: 1px solid #8b5a28; border-radius: 7px; background: #241b10; color: #f1d5ad; }
+.result-warning strong { color: #ffd69a; }
+.result-warning ul { margin: 7px 0 0; padding-left: 18px; }
 .field input, .field select, .field textarea, .lookup input, .crs-fields select { width: 100%; min-height: 41px; border: 1px solid #2e443d; border-radius: 7px; background: #091411; color: var(--ink); padding: 8px 10px; outline: none; }
 .field textarea { resize: vertical; }
 .field input:focus, .field select:focus, .field textarea:focus, .lookup input:focus, .crs-fields select:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(8,127,123,.12); }

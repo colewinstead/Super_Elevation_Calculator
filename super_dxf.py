@@ -481,7 +481,12 @@ def _overlay_station_label(row: dict, curve: dict) -> str:
     results = curve.get("results") or {}
     runoff = float(results.get("Lr", 0.0) or 0.0)
     reverse_crown = results.get("reverse_crown_ft")
-    pc = None if reverse_crown is None else float(reverse_crown) + 0.7 * runoff
+    stored_pc = results.get("pc_ft")
+    pc = (
+        float(stored_pc)
+        if stored_pc is not None
+        else (None if reverse_crown is None else float(reverse_crown) + 0.7 * runoff)
+    )
     pt = results.get("pt_ft")
     tolerance = 0.0015
     if pc is not None and abs(station - pc) <= tolerance:

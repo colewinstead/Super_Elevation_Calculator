@@ -1,10 +1,13 @@
 from app_info import CALCULATION_ENGINE_VERSION
 from criteria_info import (
+    MDOT_PROFILE_ID,
     applicable_drawings_label,
     calculation_sources_label,
     criteria_for_result,
     criteria_metadata,
+    normalize_profile_id,
 )
+import tdot_criteria
 
 
 def parse_station(value: str) -> float:
@@ -1287,6 +1290,216 @@ def parse_optional(value: str, default: float | None = None) -> float | None:
     return float(value)
 
 
+def _calculate_tdot_superelevation(
+    pc_input: str,
+    pt_input: str,
+    speed_input: str,
+    radius_input: str,
+    facility: str,
+    area_type: str,
+    lane_width_input: str,
+    lanes_rotated_input: str,
+    e_manual_input: str,
+    friction_input: str,
+    rel_grad_input: str,
+    normal_crown_input: str,
+    L_manual_input: str,
+    Lt_manual_input: str,
+    station_equations: list[dict] | None,
+    alignment_station_range: tuple[float, float] | None,
+) -> dict:
+    """Calculate the TDOT RD11 table profile without changing MDOT behavior."""
+    speed_mph = parse_required(speed_input, "Design speed")
+    radius_ft = parse_required(radius_input, "Curve radius")
+    lane_width_ft = parse_optional(lane_width_input, 12.0) or 12.0
+    lanes_rotated = parse_optional(lanes_rotated_input, 2.0) or 2.0
+    normal_crown = parse_optional(normal_crown_input, 0.02) or 0.02
+    e_manual = parse_optional(e_manual_input, None)
+    L_manual = parse_optional(L_manual_input, None)
+    Lt_manual = parse_optional(Lt_manual_input, None)
+    if radius_ft <= 0 or lane_width_ft <= 0 or normal_crown <= 0:
+        raise ValueError("Curve radius, lane width, and normal crown must be positive.")
+    if str(friction_input or "").strip():
+        raise ValueError(
+            "The TDOT RD11 profile selects e from RD11-LR tables and does not consume a side-friction "
+            "override. Use the manual e field for an engineer-approved exception."
+        )
+
+    area = (area_type or "rural").strip().lower() or "rural"
+    if not (area.startswith("rural") or area.startswith("urban")):
+        raise ValueError("The TDOT RD11 profile supports rural or urban highway tables; select one.")
+    facility_text = str(facility).strip().lower()
+    layout = "divided" if (facility_text.startswith("divided") or "edge" in facility_text) else "undivided"
+    if layout == "divided":
+        raise ValueError(
+            "TDOT divided-roadway lane events require a carriageway-specific lane/pivot model. "
+            "RD11-SE-3/3A are recorded as supporting sources, but this release intentionally blocks "
+            "divided output rather than applying the undivided lane geometry."
+        )
+    lookup = tdot_criteria.lookup_superelevation(speed_mph, radius_ft, area)
+    n1, bw, lanes_used = tdot_criteria.lane_factors(lanes_rotated)
+
+    pc_civil_ft = parse_station(pc_input)
+    pt_civil_ft = parse_station(pt_input) if pt_input.strip() else None
+    normalized_equations = normalize_station_equations(station_equations)
+    pc_ft = civil_to_internal_station(pc_civil_ft, normalized_equations, alignment_station_range)
+    pt_ft = (
+        civil_to_internal_station(pt_civil_ft, normalized_equations, alignment_station_range)
+        if pt_civil_ft is not None
+        else None
+    )
+
+    if str(rel_grad_input or "").strip():
+        relative_gradient, rel_grad_note = parse_relative_gradient(rel_grad_input, speed_mph)
+        rel_grad_note = rel_grad_note or "Using user-entered relative gradient."
+    else:
+        relative_gradient = tdot_criteria.relative_gradient(speed_mph)
+        rel_grad_note = "Using TDOT STD. DWG RD11-SE-1, Table 1."
+    if relative_gradient <= 0:
+        raise ValueError("Relative gradient must be positive.")
+
+    e = float(e_manual) if e_manual is not None else float(lookup["e"])
+    if e < 0:
+        raise ValueError("Superelevation rate e cannot be negative.")
+    e_source = "Manual" if e_manual is not None else str(lookup["source"])
+    e_note = (
+        "Engineer-entered TDOT superelevation-rate override; confirm the applicable design exception."
+        if e_manual is not None
+        else str(lookup["note"])
+    )
+    normal_crown_only = abs(e) < 1e-12
+
+    if normal_crown_only:
+        L = 0.0
+        Lt = 0.0
+        runoff_note = "Normal crown maintained; runoff and tangent runout are zero."
+    else:
+        if L_manual is not None:
+            if L_manual <= 0:
+                raise ValueError("Manual runoff length Lr must be positive.")
+            L = float(L_manual)
+            runoff_note = "Using engineer-entered TDOT runoff-length override."
+        else:
+            L, n1, bw, lanes_used = tdot_criteria.runoff_length(
+                lane_width_ft, lanes_rotated, e, relative_gradient
+            )
+            runoff_note = (
+                "Calculated with RD11-SE-1 and rounded to the nearest whole foot to match the "
+                "RD11-LR table convention."
+            )
+        if Lt_manual is not None:
+            if Lt_manual < 0:
+                raise ValueError("Manual tangent runout Lt cannot be negative.")
+            Lt = float(Lt_manual)
+        else:
+            Lt = L * normal_crown / e
+
+    total_transition = L + Lt
+    pnc_ft = pc_ft - total_transition / 2.0
+    zero_crown_ft = pnc_ft + Lt
+    reverse_section_ft = zero_crown_ft + Lt
+    full_super_ft = pc_ft + total_transition / 2.0
+
+    full_super_out_ft = None
+    zero_crown_out_ft = None
+    reverse_section_out_ft = None
+    pnc_out_ft = None
+    if pt_ft is not None:
+        full_super_out_ft = pt_ft - total_transition / 2.0
+        zero_crown_out_ft = full_super_out_ft + L
+        reverse_section_out_ft = zero_crown_out_ft - Lt
+        pnc_out_ft = pt_ft + total_transition / 2.0
+
+    warnings: list[str] = []
+    if lookup.get("below_minimum_radius") and e_manual is None:
+        warnings.append(str(lookup["note"]))
+    if speed_mph >= 50 and e >= 0.03:
+        warnings.append(
+            "TDOT RD11-SE-1 recommends a spiral for design speed 50 mph or greater and e of 3% or greater."
+        )
+    profile_id = tdot_criteria.TDOT_PROFILE_ID
+    result = {
+        "calculation_metadata": {
+            "engine_version": CALCULATION_ENGINE_VERSION,
+            "criteria": criteria_metadata(profile_id),
+            "manual_overrides": {
+                "superelevation_rate": e_manual is not None,
+                "runoff_length": L_manual is not None,
+                "tangent_runout": Lt_manual is not None,
+                "side_friction": False,
+                "relative_gradient": bool(str(rel_grad_input or "").strip()),
+                "normal_crown": str(normal_crown_input or "").strip() not in {"", "0.02", "0.0200"},
+            },
+        },
+        "inputs": {
+            "criteria_profile": profile_id,
+            "pc": pc_input,
+            "pt": pt_input,
+            "speed_mph": speed_mph,
+            "radius_ft": radius_ft,
+            "facility": layout,
+            "area_type": area,
+            "lane_width_ft": lane_width_ft,
+            "lanes_rotated": lanes_rotated,
+            "e_manual": e_manual,
+            "friction_input": friction_input,
+            "relative_gradient_input": rel_grad_input,
+            "normal_crown": normal_crown,
+            "Lr_manual": L_manual,
+            "Lt_manual": Lt_manual,
+        },
+        "facility": layout,
+        "area_type": area,
+        "pc_ft": pc_ft,
+        "pt_ft": pt_ft,
+        "station_equations": normalized_equations,
+        "alignment_station_range": alignment_station_range,
+        "e": e,
+        "e_max": float(lookup["e_max"]),
+        "e_source": e_source,
+        "e_note": e_note,
+        "runoff_note": runoff_note,
+        "extra_width": 0.0,
+        "extra_width_note": None,
+        "friction": None,
+        "friction_note": "Not used by the TDOT RD11 table profile.",
+        "relative_gradient": relative_gradient,
+        "rel_grad_note": rel_grad_note,
+        "Lr": L,
+        "Lt": Lt,
+        "lanes_used": float(lanes_used),
+        "n1": n1,
+        "bw": bw,
+        "lanes_note": "Using TDOT RD11-SE-1, Table 2.",
+        "r_normal": float(lookup["normal_radius"]),
+        "r_reverse": float(lookup["reverse_radius"]),
+        "r_note": f"Using {lookup['source']} exact speed row.",
+        "crown_state": "Normal crown" if normal_crown_only else "See standard drawings",
+        "normal_crown_only": normal_crown_only,
+        "transition_method": "tdot_simple_curve_half_total",
+        "pnc_ft": pnc_ft,
+        "zero_crown_ft": zero_crown_ft,
+        "reverse_section_ft": reverse_section_ft,
+        # Compatibility names used by existing reports and project files.
+        "reverse_crown_ft": zero_crown_ft,
+        "full_super_ft": full_super_ft,
+        "pnc_out_ft": pnc_out_ft,
+        "zero_crown_out_ft": zero_crown_out_ft,
+        "reverse_section_out_ft": reverse_section_out_ft,
+        "reverse_crown_out_ft": zero_crown_out_ft,
+        "full_super_out_ft": full_super_out_ft,
+        "segments": {
+            "runoff_Lr": L,
+            "runout_Lt": Lt,
+            "half_total_transition": total_transition / 2.0,
+            "total_transition": total_transition,
+        },
+        "warnings": warnings,
+    }
+    result["calculation_metadata"]["criteria"] = criteria_for_result(result)
+    return result
+
+
 def calculate_superelevation(
     pc_input: str,
     pt_input: str,
@@ -1304,7 +1517,28 @@ def calculate_superelevation(
     Lt_manual_input: str,
     station_equations: list[dict] | None = None,
     alignment_station_range: tuple[float, float] | None = None,
+    criteria_profile: str = MDOT_PROFILE_ID,
 ) -> dict:
+    profile_id = normalize_profile_id(criteria_profile)
+    if profile_id == tdot_criteria.TDOT_PROFILE_ID:
+        return _calculate_tdot_superelevation(
+            pc_input,
+            pt_input,
+            speed_input,
+            radius_input,
+            facility,
+            area_type,
+            lane_width_input,
+            lanes_rotated_input,
+            e_manual_input,
+            friction_input,
+            rel_grad_input,
+            normal_crown_input,
+            L_manual_input,
+            Lt_manual_input,
+            station_equations,
+            alignment_station_range,
+        )
     speed_mph = parse_required(speed_input, "Design speed")
     radius_ft = parse_required(radius_input, "Curve radius")
     lane_width_ft = parse_optional(lane_width_input, 12.0) or 12.0
@@ -1423,7 +1657,7 @@ def calculate_superelevation(
     result = {
         "calculation_metadata": {
             "engine_version": CALCULATION_ENGINE_VERSION,
-            "criteria": criteria_metadata(),
+            "criteria": criteria_metadata(profile_id),
             "manual_overrides": {
                 "superelevation_rate": e_manual is not None,
                 "runoff_length": L_manual is not None,
@@ -1434,6 +1668,7 @@ def calculate_superelevation(
             },
         },
         "inputs": {
+            "criteria_profile": profile_id,
             "pc": pc_input,
             "pt": pt_input,
             "speed_mph": speed_mph,
@@ -1451,6 +1686,7 @@ def calculate_superelevation(
         },
         "facility": facility,
         "area_type": area,
+        "pc_ft": pc_ft,
         "pt_ft": pt_ft,
         "station_equations": normalized_equations,
         "alignment_station_range": alignment_station_range,
@@ -1476,6 +1712,7 @@ def calculate_superelevation(
         "r_note": r_note,
         "crown_state": crown_state,
         "normal_crown_only": normal_crown_only,
+        "transition_method": "mdot_70_30_runoff",
         "pnc_ft": pnc_ft,
         "reverse_crown_ft": reverse_crown_ft,
         "full_super_ft": full_super_ft,
@@ -1498,8 +1735,10 @@ def format_results(results: dict, station_format: bool) -> list[str]:
     inputs = results.get("inputs", {})
     segments = results.get("segments", {})
     criteria = criteria_for_result(results)
+    is_tdot = str(criteria.get("profile_id", "")).startswith("tdot")
 
     lines = ["--- Criteria References ---"]
+    lines.append(f"Profile: {criteria.get('profile_name', criteria.get('profile_id', 'unknown'))}")
     lines.append(f"Applicable: {applicable_drawings_label(criteria)}")
     lines.append(f"Calculation sources: {calculation_sources_label(criteria)}")
     lines.append("\n--- Inputs ---")
@@ -1545,12 +1784,13 @@ def format_results(results: dict, station_format: bool) -> list[str]:
     lines.append(f"Relative gradient used: {results['relative_gradient']:.4f} ft/ft")
     if results["rel_grad_note"]:
         lines.append(f"Note: {results['rel_grad_note']}")
-    lines.append(
-        f"Table 3-4-A radii (Rnc, Rrc): {results['r_normal']:.0f} ft, {results['r_reverse']:.0f} ft"
-    )
+    radius_label = "TDOT table radii (Rnc, R at 2%)" if is_tdot else "Table 3-4-A radii (Rnc, Rrc)"
+    lines.append(f"{radius_label}: {results['r_normal']:.0f} ft, {results['r_reverse']:.0f} ft")
     if results["r_note"]:
         lines.append(f"Note: {results['r_note']}")
-    lines.append(f"Crown condition by Table 3-4-A: {results['crown_state']}")
+    lines.append(f"Crown condition by governing table: {results['crown_state']}")
+    for warning in results.get("warnings", []) or []:
+        lines.append(f"Warning: {warning}")
     if results.get("normal_crown_only"):
         lines.append("Normal crown is maintained through this curve; no superelevation transition is required.")
         return lines
@@ -1560,9 +1800,34 @@ def format_results(results: dict, station_format: bool) -> list[str]:
         lines.append(f"Extra width (inside of curve): {results['extra_width']:.2f} ft")
         if results.get("extra_width_note"):
             lines.append(f"Note: {results['extra_width_note']}")
+    lines.append(f"Total transition (Lt + Lr): {segments.get('total_transition', 0.0):.2f} ft")
+    if is_tdot:
+        lines.append(f"One-half total transition: {segments.get('half_total_transition', 0.0):.2f} ft")
+        lines.append(
+            f"Start of normal-crown transition: {format_result_station(results, results['pnc_ft'], station_format)}"
+        )
+        lines.append(
+            f"Zero crown / start of runoff: {format_result_station(results, results['zero_crown_ft'], station_format)}"
+        )
+        lines.append(
+            f"Reverse-crown section: {format_result_station(results, results['reverse_section_ft'], station_format)}"
+        )
+        lines.append(
+            f"Full super (PC + one-half total): {format_result_station(results, results['full_super_ft'], station_format)}"
+        )
+        if results["pt_ft"] is not None:
+            lines.append(
+                f"Full super (PT - one-half total): {format_result_station(results, results['full_super_out_ft'], station_format)}"
+            )
+            lines.append(
+                f"Zero crown / end of runoff: {format_result_station(results, results['zero_crown_out_ft'], station_format)}"
+            )
+            lines.append(
+                f"Normal crown restored: {format_result_station(results, results['pnc_out_ft'], station_format)}"
+            )
+        return lines
     lines.append(f"Approx. 0.7Lr: {segments.get('approx_0p7L', 0.0):.2f} ft")
     lines.append(f"Approx. 0.3Lr: {segments.get('approx_0p3L', 0.0):.2f} ft")
-    lines.append(f"Total transition (Lt + Lr): {segments.get('total_transition', 0.0):.2f} ft")
     lines.append(
         f"Point of normal crown (start of tangential runout): {format_result_station(results, results['pnc_ft'], station_format)}"
     )

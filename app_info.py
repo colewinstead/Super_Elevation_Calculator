@@ -2,7 +2,7 @@
 
 APP_NAME = "Superelevation Calculator"
 APP_VERSION = "1.4.3"
-CALCULATION_ENGINE_VERSION = "1.0.0"
+CALCULATION_ENGINE_VERSION = "1.1.0"
 
 
 def version_label() -> str:

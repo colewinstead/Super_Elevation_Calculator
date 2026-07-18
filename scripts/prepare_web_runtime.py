@@ -13,6 +13,7 @@ MODULES = [
     "Super.py",
     "app_info.py",
     "criteria_info.py",
+    "tdot_criteria.py",
     "super_batch.py",
     "super_dxf.py",
     "super_exports.py",

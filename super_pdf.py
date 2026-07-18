@@ -44,6 +44,9 @@ def stamp_images() -> dict[str, bytes]:
 def select_stamps(results: dict) -> list[str]:
     _, stamp_b64 = _asset_constants()
     inputs = results.get("inputs", {})
+    profile_id = str(((results.get("calculation_metadata", {}) or {}).get("criteria", {}) or {}).get("profile_id", ""))
+    if profile_id.startswith("tdot"):
+        return []
     area = str(inputs.get("area_type", "")).lower()
     facility = str(inputs.get("facility", "")).lower()
     speed = inputs.get("speed_mph", 0)
@@ -172,6 +175,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         calculation_metadata = results.get("calculation_metadata", {}) or {}
         engine_version = calculation_metadata.get("engine_version") or "legacy-unversioned"
         criteria = criteria_for_result(results)
+        is_tdot = str(criteria.get("profile_id", "")).startswith("tdot")
         meta = curve.get("meta", {}) or {}
         notes = curve.get("notes", "")
         inputs = results.get("inputs", {}) or {}
@@ -218,7 +222,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         c.drawString(left, y, f"Curve: {meta.get('curve_name', 'n/a')}    Direction: {meta.get('curve_direction', 'left')}")
         y -= 0.22 * inch
 
-        if diagram_bytes:
+        if diagram_bytes and not is_tdot:
             diagram_img = ImageReader(io.BytesIO(diagram_bytes))
             iw, ih = diagram_img.getSize()
             scale = min((width - right_x - margin) / iw, (2.0 * inch) / ih)
@@ -288,6 +292,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
             results.get("e_note"),
             results.get("runoff_note"),
             results.get("extra_width_note"),
+            *((results.get("warnings", []) or [])),
         ]
         note_text = "; ".join(part for part in note_parts if part)
         if note_text:
@@ -302,6 +307,16 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         c.setFont("Helvetica", 8)
         if results.get("normal_crown_only"):
             station_lines = [("Normal crown begins", results.get("reverse_crown_ft")), ("Normal crown ends", results.get("pt_ft"))]
+        elif results.get("transition_method") == "tdot_simple_curve_half_total":
+            station_lines = [
+                ("Start normal crown", results.get("pnc_ft")),
+                ("Zero crown / start runoff", results.get("zero_crown_ft")),
+                ("Reverse-crown section", results.get("reverse_section_ft")),
+                ("Full super near PC", results.get("full_super_ft")),
+                ("Full super near PT", results.get("full_super_out_ft")),
+                ("Zero crown / end runoff", results.get("zero_crown_out_ft")),
+                ("Normal crown restored", results.get("pnc_out_ft")),
+            ]
         else:
             station_lines = [
                 ("Point of normal crown", results.get("pnc_ft")),

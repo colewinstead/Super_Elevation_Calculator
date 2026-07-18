@@ -23,6 +23,7 @@ def build_curve_from_preset(preset: dict, shared_inputs: dict[str, str]) -> dict
         str(shared_inputs.get("Lt_manual", "")),
         preset.get("station_equations"),
         preset.get("alignment_station_range"),
+        str(shared_inputs.get("criteria_profile", "mdot-rdsd-2026-04-22")),
     )
     return {
         "results": results,

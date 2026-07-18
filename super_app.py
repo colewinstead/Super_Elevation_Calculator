@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 import Super
 from app_info import APP_VERSION, version_label
 import app_logging
+from criteria_info import MDOT_PROFILE_ID
 import super_batch
 import super_dxf
 import super_exports
@@ -78,6 +79,7 @@ class ModernSuperElevationUI(tk.Tk):
         self._update_dialog: tk.Toplevel | None = None
 
         self.vars = {
+            "criteria_profile": tk.StringVar(value=MDOT_PROFILE_ID),
             "project_name": tk.StringVar(),
             "route_name": tk.StringVar(),
             "alignment_name": tk.StringVar(),
@@ -522,7 +524,20 @@ class ModernSuperElevationUI(tk.Tk):
         row = self._field(body, row, "Curve radius (ft) *", "radius")
 
         row = self._section(body, row, "Roadway")
-        row = self._combo(body, row, "Facility / rotation", "facility", ["centerline", "outside edge"])
+        row = self._combo(
+            body,
+            row,
+            "Governing standard",
+            "criteria_profile",
+            [MDOT_PROFILE_ID, "tdot-rd11-2026-04-30"],
+        )
+        row = self._combo(
+            body,
+            row,
+            "Facility / roadway layout",
+            "facility",
+            ["centerline", "outside edge", "undivided"],
+        )
         row = self._combo(body, row, "Area type", "area", ["rural", "urban", "local"])
         row = self._field(body, row, "Lane width (ft)", "lane_width")
         row = self._field(body, row, "Lanes rotated", "lanes_rotated")
@@ -696,8 +711,9 @@ Curve radius (ft) *: Horizontal circular-curve radius.
 
 ROADWAY
 
-Facility / rotation: Select centerline or outside edge to define the rotation/pivot assumption.
-Area type: Rural, urban, or local. This affects the calculation criteria; local uses centerline rotation.
+Governing standard: Select the versioned MDOT or TDOT criteria profile before calculating.
+Facility / roadway layout: MDOT uses centerline or outside edge. The active TDOT lane-event model is undivided; divided-roadway drawings are recorded but blocked pending a carriageway-specific lane/pivot model.
+Area type: Rural, urban, or local. TDOT supports its rural and urban RD11-LR tables; MDOT local uses centerline rotation.
 Lane width (ft): Width of one rotated lane. Default is 12 ft.
 Lanes rotated: Number of lanes included in the rotation. Default is 2.
 
@@ -707,7 +723,7 @@ e (ft/ft): Full superelevation rate. Leave blank for the calculated rate.
 Runoff Lr (ft): Length used to transition from normal crown to full superelevation. Leave blank for calculated length.
 Runout Lt (ft): Length used to remove adverse crown before runoff. Leave blank for calculated length.
 Relative gradient: Maximum rate of cross-slope change used by the calculation. Leave blank for calculated value.
-Side friction: Side-friction factor. Leave blank for the calculated value.
+Side friction: Side-friction factor for applicable MDOT formula paths. TDOT table calculations do not consume this override.
 Normal crown: Typical tangent cross slope, expressed as a decimal (0.0200 = 2%).
 Curve notes: Project-specific notes included with the curve.
 
@@ -1016,6 +1032,19 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
                 continue
             var.trace_add("write", self._on_input_change)
         self.vars["landxml_curve"].trace_add("write", self._on_landxml_curve_change)
+        self.vars["criteria_profile"].trace_add("write", self._on_profile_change)
+
+    def _on_profile_change(self, *_: object) -> None:
+        if self._suspend_auto:
+            return
+        is_tdot = self.vars["criteria_profile"].get().startswith("tdot")
+        if is_tdot:
+            if self.vars["facility"].get() != "undivided":
+                self.vars["facility"].set("undivided")
+            if self.vars["area"].get() == "local":
+                self.vars["area"].set("rural")
+        elif self.vars["facility"].get() not in {"centerline", "outside edge"}:
+            self.vars["facility"].set("centerline")
 
     def _on_input_change(self, *_: object) -> None:
         self._update_advanced_summary()
@@ -1040,7 +1069,10 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         rel_grad = self.vars["rel_grad"].get() if include_overrides else ""
         friction = self.vars["friction"].get() if include_overrides else ""
         normal_crown = self.vars["normal_crown"].get()
-        if self.vars["area"].get().strip().lower().startswith("local"):
+        if (
+            self.vars["criteria_profile"].get() == MDOT_PROFILE_ID
+            and self.vars["area"].get().strip().lower().startswith("local")
+        ):
             self.vars["facility"].set("centerline")
         return Super.calculate_superelevation(
             self.vars["pc"].get(),
@@ -1059,6 +1091,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             Lt_manual,
             self._station_equations(),
             self._alignment_station_range(),
+            self.vars["criteria_profile"].get(),
         )
 
     def _station_equations(self) -> list[dict]:
@@ -1251,6 +1284,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
 
     def _shared_curve_inputs(self) -> dict[str, str]:
         return {
+            "criteria_profile": self.vars["criteria_profile"].get().strip(),
             "project_name": self.vars["project_name"].get().strip(),
             "route_name": self.vars["route_name"].get().strip(),
             "speed": self.vars["speed"].get().strip(),
@@ -1289,6 +1323,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             else:
                 var.set("")
         self.vars["curve_direction"].set("left")
+        self.vars["criteria_profile"].set(MDOT_PROFILE_ID)
         self.vars["facility"].set("centerline")
         self.vars["area"].set("rural")
         self.vars["lane_width"].set("12")
@@ -1477,6 +1512,9 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self.vars["pt"].set(inputs.get("pt", ""))
         self.vars["speed"].set(str(inputs.get("speed_mph", "")))
         self.vars["radius"].set(str(inputs.get("radius_ft", "")))
+        self.vars["criteria_profile"].set(
+            inputs.get("criteria_profile", (results.get("calculation_metadata", {}).get("criteria", {}) or {}).get("profile_id", MDOT_PROFILE_ID))
+        )
         self.vars["facility"].set(inputs.get("facility", "centerline"))
         self.vars["area"].set(inputs.get("area_type", "rural"))
         self.vars["lane_width"].set(str(inputs.get("lane_width_ft", "")))
