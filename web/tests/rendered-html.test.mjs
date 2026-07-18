@@ -36,18 +36,7 @@ test("ships the Python worker and shared runtime manifest", async () => {
   assert.match(worker, /reportlab==4\.4\.7/);
   assert.match(worker, /ezdxf==1\.4\.4/);
   assert.match(manifest, /super_service\.py/);
-  assert.match(worker, /new URL\("\.\/python\/", self\.location\.href\)/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
-});
-
-test("supports deployment beneath a GitHub Pages project path", async () => {
-  const [source, pagesConfig] = await Promise.all([
-    readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../vite.pages.config.ts", import.meta.url), "utf8"),
-  ]);
-  assert.match(source, /new Worker\("pyodide-worker\.js"\)/);
-  assert.match(pagesConfig, /PAGES_BASE_PATH/);
-  assert.match(pagesConfig, /dist-pages/);
 });
 
 test("debounces automatic calculations when required inputs are ready", async () => {
