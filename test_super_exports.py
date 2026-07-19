@@ -103,7 +103,20 @@ class SuperExportTests(unittest.TestCase):
             super_dxf.export_overlay_dxf("unused.dxf", curves, data)
         finally:
             super_dxf.DxfWriter.save = original
-        encoded = json.dumps(captured["records"], separators=(",", ":")).encode("utf-8")
+        def canonicalize(value):
+            if isinstance(value, float):
+                # Ignore platform-level trig noise while retaining sub-micro-inch geometry changes.
+                rounded = round(value, 8)
+                return 0.0 if rounded == 0 else rounded
+            if isinstance(value, (list, tuple)):
+                return [canonicalize(item) for item in value]
+            if isinstance(value, dict):
+                return {key: canonicalize(item) for key, item in value.items()}
+            return value
+
+        encoded = json.dumps(
+            canonicalize(captured["records"]), separators=(",", ":")
+        ).encode("utf-8")
         return len(captured["records"]), hashlib.sha256(encoded).hexdigest()
 
     def sample_results(self):
@@ -412,7 +425,7 @@ class SuperExportTests(unittest.TestCase):
     def test_overlay_entity_sequence_is_preserved(self):
         self.assertEqual(
             self.overlay_record_digest(),
-            (202, "a1c717d252b5e235ca3f01f53646a536d2c24811c08f17e4f2822e0c99a4e165"),
+            (202, "59594d7141b84e1d3099110cc7e6eaec60db01c9dca6038d9a95f5584e17318e"),
         )
 
     def test_overlay_alignment_layer_uses_gray_aci(self):
