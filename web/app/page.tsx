@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- fixed local showcase captures do not use an image optimization service */
 import DownloadCards from "./DownloadCards";
 
 const GITHUB_REPOSITORY = "https://github.com/colewinstead/Super_Elevation_Calculator";
@@ -68,20 +69,39 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="hero-visual" aria-label="Superelevated roadway calculation illustration">
-          <div className="plan-grid" />
-          <div className="curve-trace trace-one" />
-          <div className="curve-trace trace-two" />
-          <div className="tangent-trace" aria-hidden="true" />
-          <span className="station station-a">PC 125+42.18</span>
-          <span className="station station-b">FULL SUPER</span>
-          <span className="station station-c">PT 129+86.72</span>
-          <div className="bank-card">
-            <p>SECTION @ 127+64.45</p>
-            <div className="bank-diagram"><i><span>+6.0%</span></i><b>CL</b><i><span>−6.0%</span></i></div>
-            <div className="bank-metrics"><span><small>RATE e</small><strong>0.0600</strong></span><span><small>RUNOFF</small><strong>180.00′</strong></span><span><small>RUNOUT</small><strong>60.00′</strong></span></div>
-          </div>
-          <p className="visual-caption">Alignment geometry · lane events · transition limits</p>
+        <div className="output-showcase" aria-label="Real Superelevation Calculator outputs">
+          <a className="output-card output-card-ui" href="/calculator">
+            <figure>
+              <div className="output-image output-image-ui">
+                <img src="/showcase/calculator-ui.png" alt="Browser calculator showing the SR 82 project, curve inputs, calculated results, lane diagram, and export controls" width="1314" height="1649" />
+              </div>
+              <figcaption><span>Browser UI</span><strong>Calculate and review</strong><small>Open the live workspace ↗</small></figcaption>
+            </figure>
+          </a>
+          <a className="output-card" href="/showcase/lane-profile-diagram.png" target="_blank" rel="noreferrer">
+            <figure>
+              <div className="output-image output-image-diagram">
+                <img src="/showcase/lane-profile-diagram.png" alt="Expanded browser diagram showing left and right lane superelevation profiles for two SR 82 curves" width="1280" height="720" />
+              </div>
+              <figcaption><span>Lane diagram</span><strong>Station-aware profiles</strong><small>View full size ↗</small></figcaption>
+            </figure>
+          </a>
+          <a className="output-card" href="/showcase/dxf-plan-view.png" target="_blank" rel="noreferrer">
+            <figure>
+              <div className="output-image output-image-dxf">
+                <img src="/showcase/dxf-plan-view.png" alt="Zoomed CAD plan view of SR 82 transition callouts with the selected curve, station, side, slope, and event metadata" width="1280" height="720" />
+              </div>
+              <figcaption><span>Overlay DXF</span><strong>Transition callouts</strong><small>View full size ↗</small></figcaption>
+            </figure>
+          </a>
+          <a className="output-card" href="/showcase/pdf-report.png" target="_blank" rel="noreferrer">
+            <figure>
+              <div className="output-image output-image-pdf">
+                <img src="/showcase/pdf-report.png" alt="First page of the generated three-page SR 82 superelevation calculation PDF report" width="1224" height="1584" />
+              </div>
+              <figcaption><span>PDF report</span><strong>3-page design record</strong><small>View full size ↗</small></figcaption>
+            </figure>
+          </a>
         </div>
       </section>
 
@@ -105,24 +125,12 @@ export default function Home() {
           </ol>
         </div>
 
-        <div className="workspace-preview" aria-label="Example calculator results">
-          <div className="preview-top"><span><i /> Superelevation Calculator</span><small>PRIVATE ENGINE READY</small></div>
-          <div className="preview-body">
-            <aside>
-              <p>01 / PROJECT</p>
-              <label>ROUTE<strong>SR 25</strong></label>
-              <label>ALIGNMENT<strong>MAINLINE_A</strong></label>
-              <label>CURVE<strong>CURVE 07 · LEFT</strong></label>
-              <div className="xml-chip"><span>XML</span><div><strong>SR25_Mainline.xml</strong><small>12 curves · US survey foot</small></div></div>
-            </aside>
-            <section>
-              <div className="preview-section-title"><p>03 / RESULTS</p><span>CRITERIA RECORDED</span></div>
-              <div className="preview-metrics"><article><small>RATE e</small><strong>0.0600</strong><span>automatic</span></article><article><small>RUNOFF Lr</small><strong>180.00′</strong><span>automatic</span></article><article><small>RUNOUT Lt</small><strong>60.00′</strong><span>automatic</span></article></div>
-              <div className="preview-table"><div><strong>LEFT LANE</strong><span>FULL SUPER</span><b>127+64.45</b><em>+6.00%</em></div><div><strong>RIGHT LANE</strong><span>FULL SUPER</span><b>127+64.45</b><em>−6.00%</em></div></div>
-              <div className="preview-export"><span>REVIEW & EXPORT</span><i className="preview-file">PDF report</i><i className="preview-file">ORD CSV</i><i className="preview-file">Overlay DXF</i></div>
-            </section>
-          </div>
-        </div>
+        <dl className="story-evidence" aria-label="Output example details">
+          <div><dt>02</dt><dd><strong>Calculated curves</strong><span>One recorded project set</span></dd></div>
+          <div><dt>202</dt><dd><strong>CAD entities</strong><span>Rendered from the overlay DXF model</span></dd></div>
+          <div><dt>03</dt><dd><strong>Report pages</strong><span>Criteria, stations, slopes, and provenance</span></dd></div>
+          <p>Shown above: one real SR 82 example processed by the same shared Python engine used by the browser and desktop applications.</p>
+        </dl>
       </section>
 
       <section className="feature-section" id="features">

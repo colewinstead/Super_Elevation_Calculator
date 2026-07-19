@@ -40,4 +40,6 @@ Sample Data/
 Test exports/
 *.png
 !web/public/og.png
+!web/public/showcase/
+!web/public/showcase/*.png
 SuperElevation_legacy_*.exe
