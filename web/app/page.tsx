@@ -1,5 +1,5 @@
-/* eslint-disable @next/next/no-img-element -- fixed local showcase captures do not use an image optimization service */
 import DownloadCards from "./DownloadCards";
+import OutputShowcase from "./OutputShowcase";
 
 const GITHUB_REPOSITORY = "https://github.com/colewinstead/Super_Elevation_Calculator";
 
@@ -69,40 +69,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="output-showcase" aria-label="Real Superelevation Calculator outputs">
-          <a className="output-card output-card-ui" href="/calculator">
-            <figure>
-              <div className="output-image output-image-ui">
-                <img src="/showcase/calculator-ui.png" alt="Browser calculator showing the SR 82 project, curve inputs, calculated results, lane diagram, and export controls" width="1314" height="1649" />
-              </div>
-              <figcaption><span>Browser UI</span><strong>Calculate and review</strong><small>Open the live workspace ↗</small></figcaption>
-            </figure>
-          </a>
-          <a className="output-card" href="/showcase/lane-profile-diagram.png" target="_blank" rel="noreferrer">
-            <figure>
-              <div className="output-image output-image-diagram">
-                <img src="/showcase/lane-profile-diagram.png" alt="Expanded browser diagram showing left and right lane superelevation profiles for two SR 82 curves" width="1280" height="720" />
-              </div>
-              <figcaption><span>Lane diagram</span><strong>Station-aware profiles</strong><small>View full size ↗</small></figcaption>
-            </figure>
-          </a>
-          <a className="output-card" href="/showcase/dxf-plan-view.png" target="_blank" rel="noreferrer">
-            <figure>
-              <div className="output-image output-image-dxf">
-                <img src="/showcase/dxf-plan-view.png" alt="Zoomed CAD plan view of SR 82 transition callouts with the selected curve, station, side, slope, and event metadata" width="1280" height="720" />
-              </div>
-              <figcaption><span>Overlay DXF</span><strong>Transition callouts</strong><small>View full size ↗</small></figcaption>
-            </figure>
-          </a>
-          <a className="output-card" href="/showcase/superelevation-report-sample.pdf" target="_blank" rel="noreferrer" aria-label="Open the sample superelevation PDF report">
-            <figure>
-              <div className="output-image output-image-pdf">
-                <img src="/showcase/pdf-report.png" alt="First page of the generated three-page SR 82 superelevation calculation PDF report" width="1224" height="1584" />
-              </div>
-              <figcaption><span>PDF report</span><strong>3-page design record</strong><small>Open sample report ↗</small></figcaption>
-            </figure>
-          </a>
-        </div>
+        <OutputShowcase />
       </section>
 
       <section className="signal-strip" aria-label="Product capabilities">
