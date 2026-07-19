@@ -184,8 +184,8 @@ td:last-child, th:last-child { text-align: right; }
 .plan-canvas svg { display: block; width: 100%; height: 100%; overflow: hidden; background: #101010; }
 .cad-line { fill: none; shape-rendering: geometricPrecision; }
 .cad-text { font-family: var(--font-plex-mono), monospace; dominant-baseline: alphabetic; }
-.cad-line.selectable, .cad-text.selectable { cursor: pointer; }
-.cad-line.selectable:hover, .cad-text.selectable:hover { filter: drop-shadow(0 0 2px #00e5ff); }
+.cad-hit-target, .cad-text.selectable { cursor: pointer; }
+.cad-text.selectable:hover { filter: drop-shadow(0 0 2px #00e5ff); }
 .cad-line[data-selected="true"], .cad-text[data-selected="true"] { filter: drop-shadow(0 0 3px #00e5ff); }
 .plan-inspector { min-width: 0; padding: 14px; overflow-wrap: anywhere; background: #171717; }
 .cad-properties { display: grid; gap: 0; margin: 12px 0 0; border-top: 1px solid #383838; }

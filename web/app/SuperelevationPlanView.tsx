@@ -7,6 +7,7 @@ import { PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 
 
 type Dict = Record<string, any>;
 type ViewBox = { x: number; y: number; width: number; height: number };
+type DragState = { startX: number; startY: number; view: ViewBox; screenToDrawing: DOMMatrix };
 
 function cadColor(aci: number) {
   return ({ 7: "#f2f2f2", 8: "#808080", 10: "#ff0000" } as Record<number, string>)[aci] || "#d8d8d8";
@@ -15,6 +16,21 @@ function cadColor(aci: number) {
 function cadLineweight(lineweight: number) {
   if (!Number.isFinite(lineweight) || lineweight <= 0) return 1;
   return Math.max(0.75, Math.min(3, lineweight / 20));
+}
+
+function clientPointToDrawing(
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+  screenToDrawing?: DOMMatrix,
+) {
+  let inverse = screenToDrawing;
+  if (!inverse) {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    inverse = matrix.inverse();
+  }
+  return new DOMPoint(clientX, clientY).matrixTransform(inverse);
 }
 
 function fittedView(plan: Dict): ViewBox {
@@ -35,8 +51,8 @@ export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
   const [view, setView] = useState<ViewBox>(fitted);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ x: number; y: number; view: ViewBox } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<DragState | null>(null);
 
   const zoom = useCallback((factor: number, anchorX = 0.5, anchorY = 0.5) => {
     const nextWidth = Math.min(fitted.width * 10, Math.max(fitted.width / 300, view.width * factor));
@@ -50,37 +66,47 @@ export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
   }, [fitted, view]);
 
   useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
+    const svg = svgRef.current;
+    if (!svg) return;
     const wheelZoom = (event: WheelEvent) => {
       event.preventDefault();
-      const bounds = viewport.getBoundingClientRect();
+      const point = clientPointToDrawing(svg, event.clientX, event.clientY);
+      if (!point) return;
       zoom(
         event.deltaY < 0 ? 0.78 : 1.28,
-        Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(bounds.width, 1))),
-        Math.max(0, Math.min(1, (event.clientY - bounds.top) / Math.max(bounds.height, 1))),
+        Math.max(0, Math.min(1, (point.x - view.x) / view.width)),
+        Math.max(0, Math.min(1, (point.y - view.y) / view.height)),
       );
     };
-    viewport.addEventListener("wheel", wheelZoom, { passive: false });
-    return () => viewport.removeEventListener("wheel", wheelZoom);
-  }, [zoom]);
+    svg.addEventListener("wheel", wheelZoom, { passive: false });
+    return () => svg.removeEventListener("wheel", wheelZoom);
+  }, [view, zoom]);
 
   const startPan = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    const svg = svgRef.current;
+    const matrix = svg?.getScreenCTM();
+    if (!svg || !matrix) return;
+    const screenToDrawing = matrix.inverse();
+    const start = clientPointToDrawing(svg, event.clientX, event.clientY, screenToDrawing);
+    if (!start) return;
     setSelectedGroup(null);
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { x: event.clientX, y: event.clientY, view: { ...view } };
+    dragRef.current = { startX: start.x, startY: start.y, view: { ...view }, screenToDrawing };
     setDragging(true);
   };
 
   const movePan = (event: PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const bounds = event.currentTarget.getBoundingClientRect();
+    const svg = svgRef.current;
+    if (!svg) return;
+    const point = clientPointToDrawing(svg, event.clientX, event.clientY, drag.screenToDrawing);
+    if (!point) return;
     setView({
       ...drag.view,
-      x: drag.view.x - (event.clientX - drag.x) * drag.view.width / Math.max(bounds.width, 1),
-      y: drag.view.y - (event.clientY - drag.y) * drag.view.height / Math.max(bounds.height, 1),
+      x: drag.view.x - (point.x - drag.startX),
+      y: drag.view.y - (point.y - drag.startY),
     });
   };
 
@@ -103,8 +129,8 @@ export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
   return <div className="plan-layout">
     <div className="plan-frame">
       <div className="plan-tools"><span>{plan.alignment_name} · {(plan.entities || []).length} CAD entities</span><button title="Zoom out" aria-label="Plan zoom out" onClick={() => zoom(1.28)}>−</button><button title="Zoom in" aria-label="Plan zoom in" onClick={() => zoom(0.78)}>+</button><button title="Fit drawing" onClick={() => setView(fitted)}>Fit</button></div>
-      <div ref={viewportRef} className={`plan-canvas${dragging ? " dragging" : ""}`} onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
-        <svg viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} role="img" aria-label="CAD model-space preview of the overlay DXF">
+      <div className={`plan-canvas${dragging ? " dragging" : ""}`} onPointerDown={startPan} onPointerMove={movePan} onPointerUp={endPan} onPointerCancel={endPan}>
+        <svg ref={svgRef} viewBox={`${view.x} ${view.y} ${view.width} ${view.height}`} role="img" aria-label="CAD model-space preview of the overlay DXF">
           {(plan.entities || []).map((entity: Dict) => {
             const style = layerStyle(entity);
             const isSelected = Boolean(selectedGroup && entity.preview?.group_id === selectedGroup);
@@ -113,21 +139,33 @@ export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
               if (selectable) event.stopPropagation();
             };
             if (entity.type === "LINE") {
-              return <line
-                key={entity.id}
-                className={`cad-line${selectable ? " selectable" : ""}`}
-                data-selected={isSelected || undefined}
-                x1={entity.x1}
-                y1={-entity.y1}
-                x2={entity.x2}
-                y2={-entity.y2}
-                stroke={isSelected ? "#00e5ff" : cadColor(Number(style.color))}
-                strokeWidth={cadLineweight(Number(style.lineweight))}
-                vectorEffect="non-scaling-stroke"
-                strokeLinecap="square"
-                onPointerDown={onEntityPointerDown}
-                onClick={() => selectEntity(entity)}
-              />;
+              return <g key={entity.id}>
+                <line
+                  className="cad-line"
+                  data-selected={isSelected || undefined}
+                  x1={entity.x1}
+                  y1={-entity.y1}
+                  x2={entity.x2}
+                  y2={-entity.y2}
+                  stroke={isSelected ? "#00e5ff" : cadColor(Number(style.color))}
+                  strokeWidth={cadLineweight(Number(style.lineweight))}
+                  vectorEffect="non-scaling-stroke"
+                  strokeLinecap="square"
+                />
+                {selectable && <line
+                  className="cad-hit-target"
+                  x1={entity.x1}
+                  y1={-entity.y1}
+                  x2={entity.x2}
+                  y2={-entity.y2}
+                  stroke="transparent"
+                  strokeWidth={12}
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="stroke"
+                  onPointerDown={onEntityPointerDown}
+                  onClick={() => selectEntity(entity)}
+                />}
+              </g>;
             }
             if (entity.type === "TEXT") {
               return <text

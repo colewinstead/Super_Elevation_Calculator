@@ -122,6 +122,11 @@ test("ships interactive diagram zoom and corridor QA controls", async () => {
   assert.match(planSource, /textAnchor/);
   assert.match(planSource, /cadColor/);
   assert.match(planSource, /selectedGroup/);
+  assert.match(planSource, /getScreenCTM\(\)/);
+  assert.match(planSource, /matrix\.inverse\(\)/);
+  assert.match(planSource, /clientPointToDrawing/);
+  assert.match(planSource, /className="cad-hit-target"/);
+  assert.match(planSource, /pointerEvents="stroke"/);
   assert.doesNotMatch(planSource, /className="plan-event/);
   assert.doesNotMatch(planSource, /plan\.curve_paths/);
   assert.match(planSource, /addEventListener\("wheel", wheelZoom, \{ passive: false \}\)/);
