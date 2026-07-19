@@ -122,6 +122,15 @@ test("ships interactive diagram zoom and corridor QA controls", async () => {
   assert.match(planSource, /textAnchor/);
   assert.match(planSource, /cadColor/);
   assert.match(planSource, /selectedGroup/);
+  assert.match(planSource, /const payloadKey = JSON\.stringify/);
+  assert.match(planSource, /plan\.bounds/);
+  assert.match(planSource, /plan\.entities/);
+  assert.match(planSource, /<PlanCanvas key={payloadKey}/);
+  assert.match(planSource, /plan\.errors\.map|plan\.errors \|\| \[\]/);
+  assert.match(planSource, /plan\.warnings\.map|plan\.warnings \|\| \[\]/);
+  assert.match(planSource, /cadFontFamily\(entity\.text_style\)/);
+  assert.match(planSource, /Arial Narrow/);
+  assert.doesNotMatch(source, /plan\.events/);
   assert.match(planSource, /getScreenCTM\(\)/);
   assert.match(planSource, /matrix\.inverse\(\)/);
   assert.match(planSource, /clientPointToDrawing/);

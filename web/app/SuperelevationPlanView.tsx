@@ -18,6 +18,13 @@ function cadLineweight(lineweight: number) {
   return Math.max(0.75, Math.min(3, lineweight / 20));
 }
 
+function cadFontFamily(textStyle: string) {
+  if (String(textStyle || "").toUpperCase() === "ENGINEERING") {
+    return '"Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif';
+  }
+  return 'Arial, "Liberation Sans", sans-serif';
+}
+
 function clientPointToDrawing(
   svg: SVGSVGElement,
   clientX: number,
@@ -46,7 +53,7 @@ function fittedView(plan: Dict): ViewBox {
   };
 }
 
-export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
+function PlanCanvas({ plan }: { plan: Dict }) {
   const fitted = useMemo(() => fittedView(plan), [plan]);
   const [view, setView] = useState<ViewBox>(fitted);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -176,6 +183,7 @@ export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
                 y={-entity.y}
                 fill={isSelected ? "#00e5ff" : cadColor(Number(style.color))}
                 fontSize={entity.height}
+                style={{ fontFamily: cadFontFamily(entity.text_style) }}
                 textAnchor={entity.alignment === "RIGHT" ? "end" : "start"}
                 transform={`rotate(${-Number(entity.rotation || 0)} ${entity.x} ${-entity.y})`}
                 onPointerDown={onEntityPointerDown}
@@ -190,7 +198,20 @@ export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
     <aside className="plan-inspector">
       <div className="inspector-heading"><span>{selected?.station ? "DXF callout" : "Plan view"}</span><strong>{selected?.curve_name || plan.alignment_name}</strong><small>{selected?.station || plan.coordinate_system?.display_name || "Coordinate system not declared"}</small></div>
       {selected?.station ? <dl className="cad-properties"><div><dt>Curve</dt><dd>{selected.curve_name}</dd></div><div><dt>Station</dt><dd>{selected.station}</dd></div><div><dt>Side</dt><dd>{selected.side || "Not provided"}</dd></div><div><dt>Slope</dt><dd>{selected.slope || "Not provided"}</dd></div><div><dt>Event</dt><dd>{selected.event_type || "Not provided"}</dd></div></dl> : selected ? <p className="inspector-empty">Curve title group selected.</p> : <p className="inspector-empty">Select a CAD callout or curve title to inspect its shared DXF metadata.</p>}
-      {(plan.errors || []).length > 0 && <div className="plan-issues"><strong>DXF blocked</strong><span>{plan.errors.length} overlay issue{plan.errors.length === 1 ? "" : "s"}</span></div>}
+      {((plan.errors || []).length > 0 || (plan.warnings || []).length > 0) && <div className="plan-diagnostics" aria-label="Plan View diagnostics">
+        {(plan.errors || []).length > 0 && <section className="plan-issues error"><strong>DXF blocked</strong><ul>{plan.errors.map((message: string, index: number) => <li key={`error-${index}`}>{message}</li>)}</ul></section>}
+        {(plan.warnings || []).length > 0 && <section className="plan-issues warning"><strong>Engineering warnings</strong><ul>{plan.warnings.map((message: string, index: number) => <li key={`warning-${index}`}>{message}</li>)}</ul></section>}
+      </div>}
     </aside>
   </div>;
+}
+
+export default function SuperelevationPlanView({ plan }: { plan: Dict }) {
+  const payloadKey = JSON.stringify([
+    plan.bounds,
+    plan.entities,
+    plan.errors,
+    plan.warnings,
+  ]);
+  return <PlanCanvas key={payloadKey} plan={plan} />;
 }
