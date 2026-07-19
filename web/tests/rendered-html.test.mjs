@@ -129,6 +129,7 @@ test("ships interactive diagram zoom and corridor QA controls", async () => {
   assert.match(planSource, /plan\.errors\.map|plan\.errors \|\| \[\]/);
   assert.match(planSource, /plan\.warnings\.map|plan\.warnings \|\| \[\]/);
   assert.match(planSource, /cadFontFamily\(entity\.text_style\)/);
+  assert.match(planSource, /\["ENGINEERING REGULAR", "ENGINEERING"\]\.includes\(normalized\)/);
   assert.match(planSource, /Arial Narrow/);
   assert.doesNotMatch(source, /plan\.events/);
   assert.match(planSource, /getScreenCTM\(\)/);

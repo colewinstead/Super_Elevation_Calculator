@@ -136,6 +136,10 @@ const plan = planProxy.toJs({ dict_converter: Object.fromEntries, create_proxies
 planProxy.destroy();
 assert.ok(plan.entities.some((entity) => entity.type === "LINE"));
 assert.ok(plan.entities.some((entity) => entity.type === "TEXT"));
+assert.ok(
+  plan.entities.some((entity) => entity.type === "TEXT" && entity.text_style === "Engineering Regular"),
+  "Plan View should preserve the exported Engineering Regular text style",
+);
 assert.equal(plan.layers.ALI_DESIGN_ML_CURVES.color, 8);
 assert.equal(plan.background, "#101010");
 assert.equal(plan.curve_paths, undefined);

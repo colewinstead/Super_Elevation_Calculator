@@ -19,7 +19,8 @@ function cadLineweight(lineweight: number) {
 }
 
 function cadFontFamily(textStyle: string) {
-  if (String(textStyle || "").toUpperCase() === "ENGINEERING") {
+  const normalized = String(textStyle || "").trim().replace(/\s+/g, " ").toUpperCase();
+  if (["ENGINEERING REGULAR", "ENGINEERING"].includes(normalized)) {
     return '"Arial Narrow", "Liberation Sans Narrow", Arial, sans-serif';
   }
   return 'Arial, "Liberation Sans", sans-serif';
