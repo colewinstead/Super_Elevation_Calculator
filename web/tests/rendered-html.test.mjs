@@ -24,6 +24,17 @@ test("renders the product homepage without starting the calculation runtime", as
   assert.match(html, /SuperelevationCalculator-macOS-Intel\.dmg/i);
   assert.match(html, /http:\/\/localhost\/og\.png/i);
   await access(new URL("../public/og.png", import.meta.url));
+  assert.match(html, /Browser UI/i);
+  assert.match(html, /Lane diagram/i);
+  assert.match(html, /Overlay DXF/i);
+  assert.match(html, /PDF report/i);
+  await Promise.all([
+    access(new URL("../public/showcase/calculator-ui.png", import.meta.url)),
+    access(new URL("../public/showcase/lane-profile-diagram.png", import.meta.url)),
+    access(new URL("../public/showcase/dxf-plan-view.png", import.meta.url)),
+    access(new URL("../public/showcase/pdf-report.png", import.meta.url)),
+  ]);
+  assert.doesNotMatch(html, /Superelevated roadway calculation illustration|Example calculator results/i);
   assert.doesNotMatch(html, /Starting private browser workspace/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
@@ -100,6 +111,14 @@ test("shows concise guidance for invalid project files", async () => {
   const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
   assert.match(source, /Use Select LandXML to open XML alignment files/);
   assert.match(source, /The selected project file is empty/);
+});
+
+test("defaults embedded LandXML projects to the first curve", async () => {
+  const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /const hasLandxmlCurves/);
+  assert.match(source, /landxml_curve_index\) === 0/);
+  assert.match(source, /loadCurveFrom\(restoredCurves\[firstLandxmlCurve\], firstLandxmlCurve/);
+  assert.match(source, /applyPreset\(0, loaded\.landxml\)/);
 });
 
 test("ships interactive diagram zoom and corridor QA controls", async () => {
