@@ -94,12 +94,12 @@ export default function Home() {
               <figcaption><span>Overlay DXF</span><strong>Transition callouts</strong><small>View full size ↗</small></figcaption>
             </figure>
           </a>
-          <a className="output-card" href="/showcase/pdf-report.png" target="_blank" rel="noreferrer">
+          <a className="output-card" href="/showcase/superelevation-report-sample.pdf" target="_blank" rel="noreferrer" aria-label="Open the sample superelevation PDF report">
             <figure>
               <div className="output-image output-image-pdf">
                 <img src="/showcase/pdf-report.png" alt="First page of the generated three-page SR 82 superelevation calculation PDF report" width="1224" height="1584" />
               </div>
-              <figcaption><span>PDF report</span><strong>3-page design record</strong><small>View full size ↗</small></figcaption>
+              <figcaption><span>PDF report</span><strong>3-page design record</strong><small>Open sample report ↗</small></figcaption>
             </figure>
           </a>
         </div>
