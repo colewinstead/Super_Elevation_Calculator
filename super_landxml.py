@@ -333,6 +333,8 @@ class LandXMLData:
             direction = "left" if self._arc_sweep_sign(segment) > 0 else "right"
             records.append(
                 {
+                    "landxml_curve_index": curve_index - 1,
+                    "landxml_curve_id": f"curve-{curve_index}",
                     "alignment_name": self.alignment_name or "Unnamed alignment",
                     "curve_name": f"Curve {curve_index}",
                     "curve_direction": direction,

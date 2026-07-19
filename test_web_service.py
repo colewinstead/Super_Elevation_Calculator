@@ -49,11 +49,17 @@ class WebServiceTests(unittest.TestCase):
     def test_schema_v4_project_round_trip_embeds_landxml(self):
         content = FIXTURE.read_text(encoding="utf-8")
         source = super_project.make_landxml_source(FIXTURE.name, content)
-        serialized = super_service.project_save({"version": 4, "vars": self.inputs(), "landxml_source": source})
+        serialized = super_service.project_save({
+            "version": 4,
+            "vars": self.inputs(),
+            "landxml_source": source,
+            "excluded_landxml_curve_indexes": [1],
+        })
         loaded = super_service.project_load(serialized)
         self.assertEqual(loaded["project"]["version"], 4)
         self.assertEqual(loaded["project"]["landxml_source"]["sha256"], source["sha256"])
         self.assertEqual(loaded["landxml"]["source"]["content"], content)
+        self.assertEqual(loaded["project"]["excluded_landxml_curve_indexes"], [1])
 
     def test_embedded_landxml_hash_mismatch_is_refused(self):
         with self.assertRaisesRegex(super_project.ProjectFormatError, "integrity"):
@@ -61,6 +67,13 @@ class WebServiceTests(unittest.TestCase):
                 "version": 4,
                 "landxml_source": {"filename": "a.xml", "encoding": "utf-8", "sha256": "0" * 64, "content": "<LandXML />"},
             })
+
+    def test_safe_dispatch_returns_friendly_project_error_without_traceback(self):
+        response = super_service.dispatch_safe("project_load", json.dumps({"content": ""}))
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["error"]["type"], "ProjectFormatError")
+        self.assertIn("not valid JSON", response["error"]["message"])
+        self.assertNotIn("Traceback", response["error"]["message"])
 
     def test_browser_exports_are_generated_in_memory(self):
         response = super_service.calculate_curve(self.inputs())
@@ -79,6 +92,25 @@ class WebServiceTests(unittest.TestCase):
         self.assertIn("decimal", station["station"]["slopes"]["left"])
         self.assertEqual(slope["slope"]["decimal"], "+0.0800")
         self.assertEqual(slope["lanes"]["left"][0]["label"], "Full-super range")
+
+    def test_browser_dispatch_exposes_diagram_and_corridor_qa(self):
+        content = FIXTURE.read_text(encoding="utf-8")
+        curves = super_service.build_all_landxml_curves(content, FIXTURE.name, self.inputs())
+        diagram = super_service.dispatch("curve_diagram", json.dumps({
+            "results": curves[0]["results"], "direction": curves[0]["meta"]["curve_direction"],
+        }))
+        qa = super_service.dispatch("corridor_qa", json.dumps({"content": content, "filename": FIXTURE.name, "curves": curves}))
+        self.assertTrue(diagram["profiles"]["left"])
+        self.assertEqual(qa["status"], "pass")
+
+    def test_present_results_accepts_pyodide_omitted_optional_values(self):
+        results = self.calculate_results_without_none_values()
+        presented = super_service.present_results(results, "right")
+        self.assertTrue(presented["lanes"]["left"])
+
+    def calculate_results_without_none_values(self) -> dict:
+        results = super_service.calculate_curve(self.inputs())["results"]
+        return {key: value for key, value in results.items() if value is not None}
 
 
 if __name__ == "__main__":

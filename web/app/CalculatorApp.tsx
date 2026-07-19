@@ -4,6 +4,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages */
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import SuperelevationAnalysis from "./SuperelevationAnalysis";
 
 type Dict = Record<string, any>;
 type RuntimeState = "loading" | "ready" | "error";
@@ -103,11 +104,16 @@ export default function CalculatorApp() {
   const [selectedCurve, setSelectedCurve] = useState(-1);
   const [landxml, setLandxml] = useState<Dict | null>(null);
   const [landxmlPreset, setLandxmlPreset] = useState(0);
+  const [excludedCurveIndexes, setExcludedCurveIndexes] = useState<number[]>([]);
   const [calculationRequest, setCalculationRequest] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [lookupStation, setLookupStation] = useState("");
   const [lookupSlope, setLookupSlope] = useState("");
   const [lookupResult, setLookupResult] = useState<Dict | null>(null);
+  const [corridorDiagram, setCorridorDiagram] = useState<Dict | null>(null);
+  const [diagramInspector, setDiagramInspector] = useState<Dict | null>(null);
+  const [corridorQa, setCorridorQa] = useState<Dict | null>(null);
+  const [planView, setPlanView] = useState<Dict | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -187,12 +193,14 @@ export default function CalculatorApp() {
   };
 
   const meta = useMemo(() => ({
+    landxml_curve_index: landxml?.curve_presets?.[landxmlPreset]?.landxml_curve_index,
+    landxml_curve_id: landxml?.curve_presets?.[landxmlPreset]?.landxml_curve_id,
     project_name: inputs.project_name?.trim() || "Unnamed project",
     route_name: inputs.route_name?.trim() || "Unnamed route",
     alignment_name: inputs.alignment_name?.trim() || "Unnamed alignment",
     curve_name: inputs.curve_name?.trim() || "Unnamed curve",
     curve_direction: inputs.curve_direction || "left",
-  }), [inputs]);
+  }), [inputs, landxml, landxmlPreset]);
 
   const run = async (label: string, task: () => Promise<any>) => {
     setError("");
@@ -274,6 +282,51 @@ export default function CalculatorApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calculationKey, calculationRequest, runtime, call]);
 
+  const diagramCurves = useMemo(() => {
+    if (!curves.length) return calculation?.results ? [{ results: calculation.results, meta }] : [];
+    if (!calculation?.results || selectedCurve < 0) return curves;
+    return curves.map((curve, index) => index === selectedCurve
+      ? { ...curve, results: calculation.results, meta, notes: inputs.curve_notes || "" }
+      : curve);
+  }, [curves, calculation?.results, inputs.curve_notes, meta, selectedCurve]);
+
+  useEffect(() => {
+    if (!diagramCurves.length || runtime !== "ready") {
+      setCorridorDiagram(null);
+      setDiagramInspector(null);
+      return;
+    }
+    let active = true;
+    call("corridor_diagram", { curves: diagramCurves })
+      .then((value) => { if (active) { setCorridorDiagram(value); setDiagramInspector(null); } })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => { active = false; };
+  }, [diagramCurves, runtime, call]);
+
+  useEffect(() => {
+    if (!landxml || runtime !== "ready") {
+      setCorridorQa(null);
+      return;
+    }
+    let active = true;
+    call("corridor_qa", { content: landxml.source.content, filename: landxml.source.filename, curves, excluded_curve_indexes: excludedCurveIndexes })
+      .then((value) => { if (active) setCorridorQa(value); })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => { active = false; };
+  }, [landxml, curves, excludedCurveIndexes, runtime, call]);
+
+  useEffect(() => {
+    if (!landxml || runtime !== "ready") {
+      setPlanView(null);
+      return;
+    }
+    let active = true;
+    call("plan_view", { content: landxml.source.content, filename: landxml.source.filename, curves: diagramCurves })
+      .then((value) => { if (active) setPlanView(value); })
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => { active = false; };
+  }, [landxml, diagramCurves, runtime, call]);
+
   const applyPreset = (index: number, parsed = landxml) => {
     const preset = parsed?.curve_presets?.[index];
     if (!preset) return;
@@ -304,6 +357,7 @@ export default function CalculatorApp() {
     const result = await run("Reading LandXML", () => call("parse_landxml", { content, filename: file.name }));
     if (result) {
       setLandxml(result);
+      setExcludedCurveIndexes([]);
       setNotice(`${file.name} is embedded in working project state. Save the project to persist it.`);
       applyPreset(0, result);
     }
@@ -311,10 +365,18 @@ export default function CalculatorApp() {
 
   const curveObject = () => calculation ? { results: calculation.results, meta, notes: inputs.curve_notes || "" } : null;
 
+  const includeSourceCurve = (curve: Dict) => {
+    const sourceIndex = curve.meta?.landxml_curve_index;
+    if (sourceIndex != null) {
+      setExcludedCurveIndexes((current) => current.filter((index) => index !== Number(sourceIndex)));
+    }
+  };
+
   const addCurve = () => {
     const curve = curveObject();
     if (!curve) return setError("Run a calculation before adding a curve.");
     setCurves((current) => [...current, curve]);
+    includeSourceCurve(curve);
     setSelectedCurve(curves.length);
     setDirty(true);
   };
@@ -323,13 +385,44 @@ export default function CalculatorApp() {
     const curve = curveObject();
     if (!curve || selectedCurve < 0) return setError("Select a curve and run a calculation before updating it.");
     setCurves((current) => current.map((item, index) => index === selectedCurve ? curve : item));
+    includeSourceCurve(curve);
     setDirty(true);
+  };
+
+  const removeCurve = () => {
+    if (selectedCurve < 0) return setError("Select a calculated curve before removing it.");
+    const removed = curves[selectedCurve];
+    const sourceIndex = removed?.meta?.landxml_curve_index;
+    setCurves((current) => current.filter((_, index) => index !== selectedCurve));
+    if (sourceIndex != null) {
+      setExcludedCurveIndexes((current) => [...new Set([...current, Number(sourceIndex)])].sort((a, b) => a - b));
+    }
+    setSelectedCurve(-1);
+    setLandxmlPreset(-1);
+    setCalculation(null);
+    setDiagramInspector(null);
+    setInputs((current) => ({
+      ...current,
+      alignment_name: "",
+      curve_name: "",
+      pc: "",
+      pt: "",
+      radius: "",
+      station_equations: [],
+      alignment_station_range: null,
+      curve_notes: "",
+    }));
+    setDirty(true);
+    setNotice(sourceIndex == null
+      ? "Removed the calculated curve."
+      : `Removed the calculated curve and excluded source Curve ${Number(sourceIndex) + 1} from corridor QA.`);
   };
 
   const loadCurve = async (index: number) => {
     setSelectedCurve(index);
     const curve = curves[index];
     if (!curve?.results) return;
+    if (curve.meta?.landxml_curve_index != null) setLandxmlPreset(Number(curve.meta.landxml_curve_index));
     const values = curve.results.inputs || {};
     setInputs((current) => ({
       ...current,
@@ -355,6 +448,7 @@ export default function CalculatorApp() {
     }));
     if (result) {
       setCurves(result);
+      setExcludedCurveIndexes([]);
       setSelectedCurve(result.length ? 0 : -1);
       if (result.length) await loadCurveFrom(result[0]);
       setDirty(true);
@@ -371,6 +465,15 @@ export default function CalculatorApp() {
   const exportCurves = () => curves.length ? curves : (curveObject() ? [curveObject()!] : []);
 
   const saveProject = async () => {
+    const filename = `${cleanName(inputs.project_name, "superelevation-project")}.json`;
+    let target: SaveTarget | null;
+    try {
+      target = await chooseSaveTarget(filename, "application/json", "json", "Superelevation project");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      return;
+    }
+    if (!target) return;
     const project = {
       version: 4,
       application_version: manifest?.application_version,
@@ -378,15 +481,16 @@ export default function CalculatorApp() {
       criteria: calculation?.results?.calculation_metadata?.criteria || manifest?.criteria,
       vars: inputs,
       curves,
+      excluded_landxml_curve_indexes: excludedCurveIndexes,
       last_results: calculation?.results || null,
       last_meta: meta,
       landxml_source: landxml?.source || null,
     };
     const content = await run("Preparing project", () => call("project_save", { project }));
     if (content) {
-      download(`${cleanName(inputs.project_name, "superelevation-project")}.json`, content, "application/json");
+      const outcome = await saveExport(target, filename, content, "application/json");
       setDirty(false);
-      setNotice("Project downloaded with calculation provenance and embedded LandXML.");
+      setNotice(`Project ${outcome} with calculation provenance and embedded LandXML.`);
     }
   };
 
@@ -394,11 +498,26 @@ export default function CalculatorApp() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    const content = await file.text();
+    let content: string;
+    try {
+      content = await file.text();
+    } catch {
+      setError(`Could not read ${file.name}. Select a saved JSON project file and try again.`);
+      return;
+    }
+    if (!content.trim()) {
+      setError("The selected project file is empty. Select a saved JSON project file.");
+      return;
+    }
+    if (file.name.toLowerCase().endsWith(".xml") || content.trimStart().startsWith("<")) {
+      setError("Use Select LandXML to open XML alignment files. Open accepts saved JSON project files.");
+      return;
+    }
     const loaded = await run("Opening project", () => call("project_load", { content }));
     if (!loaded) return;
     setInputs({ ...INITIAL_INPUTS, ...(loaded.project.vars || {}) });
     setCurves(loaded.project.curves || []);
+    setExcludedCurveIndexes(loaded.project.excluded_landxml_curve_indexes || []);
     if (loaded.project.last_results) {
       const presented = await run("Restoring results", () => call("present_results", { results: loaded.project.last_results, direction: loaded.project.last_meta?.curve_direction || "left", station_format: loaded.project.vars?.station_format !== false }));
       if (!presented) return;
@@ -407,6 +526,7 @@ export default function CalculatorApp() {
       setCalculation(null);
     }
     setLandxml(loaded.landxml || null);
+    setLandxmlPreset(-1);
     setSelectedCurve(-1);
     setDirty(false);
     setNotice(`Opened ${file.name}${loaded.landxml ? " with embedded LandXML" : ""}.`);
@@ -414,7 +534,7 @@ export default function CalculatorApp() {
 
   const newProject = () => {
     if (dirty && !window.confirm("Discard the unsaved working project?")) return;
-    setInputs(INITIAL_INPUTS); setCalculation(null); setCurves([]); setLandxml(null); setSelectedCurve(-1);
+    setInputs(INITIAL_INPUTS); setCalculation(null); setCurves([]); setLandxml(null); setLandxmlPreset(0); setSelectedCurve(-1); setExcludedCurveIndexes([]);
     setLookupResult(null); setError(""); setNotice(""); setDirty(false);
   };
 
@@ -424,6 +544,24 @@ export default function CalculatorApp() {
       results: calculation.results, direction: inputs.curve_direction, station: lookupStation, slope: lookupSlope,
     }));
     if (result) setLookupResult(result);
+  };
+
+  const inspectDiagramStation = async (station: number, curveIndex: number) => {
+    const curve = diagramCurves[curveIndex];
+    if (!curve?.results) return;
+    const value = await run("Inspecting station", () => call("diagram_lookup", {
+      results: curve.results,
+      direction: curve.meta?.curve_direction || "left",
+      station,
+    }));
+    if (value) setDiagramInspector({ ...value, curve_index: curveIndex, curve_name: curve.meta?.curve_name || `Curve ${curveIndex + 1}` });
+  };
+
+  const openQaFinding = async (finding: Dict) => {
+    const sourceIndex = finding.curve_indexes?.[0];
+    if (sourceIndex == null) return;
+    const curveIndex = curves.findIndex((curve, index) => Number(curve.meta?.landxml_curve_index ?? index) === Number(sourceIndex));
+    if (curveIndex >= 0) await loadCurve(curveIndex);
   };
 
   const performExport = async (operation: string, extension: string, mime: string) => {
@@ -482,6 +620,9 @@ export default function CalculatorApp() {
   const applicableLabel = applicableDrawings.length
     ? applicableDrawings.join(" / ")
     : "No mapped standard drawing";
+  const qaHighlights = (corridorQa?.findings || []).filter((finding: Dict) =>
+    finding.start_ft != null && finding.end_ft != null
+  );
 
   return (
     <main className="app-shell">
@@ -512,17 +653,21 @@ export default function CalculatorApp() {
           <div className="source-card">
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
             <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label>
-            {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
+            {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · {excludedCurveIndexes.length} excluded from QA · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
           </div>
           <div className="curve-list"><div className="list-title"><h3>Calculated curves</h3><span>{curves.length}</span></div>
             {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <button key={index} className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>)}
           </div>
-          <div className="button-grid"><button onClick={addCurve}>Add</button><button onClick={updateCurve}>Update</button><button onClick={() => { if (selectedCurve >= 0) { setCurves((items) => items.filter((_, i) => i !== selectedCurve)); setSelectedCurve(-1); setDirty(true); } }}>Remove</button></div>
+          <div className="button-grid"><button onClick={addCurve}>Add</button><button onClick={updateCurve}>Update</button><button onClick={removeCurve}>Remove</button></div>
         </aside>
 
         <section className="panel inputs-panel">
           <div className="panel-heading"><div><p className="step">02</p><h2>Curve inputs</h2></div><span className="required-note">* Required</span></div>
-          {(landxml?.curve_presets?.length || 0) > 0 && <label className="field full"><span>LandXML curve</span><select value={landxmlPreset} onChange={(e) => applyPreset(Number(e.target.value))}>{landxml?.curve_presets?.map((preset: Dict, index: number) => <option value={index} key={index}>{preset.curve_name} · {preset.curve_direction} · R {preset.radius_ft}</option>)}</select></label>}
+          {(landxml?.curve_presets?.length || 0) > 0 && <label className="field full"><span>LandXML curve</span><select value={landxmlPreset} onChange={(e) => {
+            const index = Number(e.target.value);
+            if (index >= 0) applyPreset(index);
+            else { setLandxmlPreset(-1); setCalculation(null); setDiagramInspector(null); }
+          }}><option value={-1}>No LandXML curve selected</option>{landxml?.curve_presets?.map((preset: Dict, index: number) => <option value={index} key={index}>{preset.curve_name} · {preset.curve_direction} · R {preset.radius_ft}{excludedCurveIndexes.includes(index) ? " · excluded from QA" : ""}</option>)}</select></label>}
           <div className="form-grid">{input("alignment_name", "Alignment name")}{input("curve_name", "Curve name")}
             <label className="field full"><span>Governing standard</span><select value={activeProfileId} onChange={(e) => updateCriteriaProfile(e.target.value)}>{manifest?.criteria_profiles?.map((profile: Dict) => <option value={profile.profile_id} key={profile.profile_id}>{profile.governing_authority} · {profile.revision}</option>)}</select><small>{activeProfile?.profile_name}</small></label>
             <label className="field"><span>Curve direction</span><select value={inputs.curve_direction} onChange={(e) => update("curve_direction", e.target.value)}><option value="left">Left</option><option value="right">Right</option></select></label>
@@ -541,7 +686,7 @@ export default function CalculatorApp() {
 
         <section className="panel results-panel">
           <div className="panel-heading"><div><p className="step">03</p><h2>Results</h2></div>{result && <span className="criteria-tag">{criteria.governing_authority || "Criteria"} sources recorded</span>}</div>
-          {!result ? <div className="results-empty"><div className="road-crown"><i></i><i></i></div><h3>Ready for curve inputs</h3><p>Enter PC, speed, and radius to calculate transition stations and signed lane slopes.</p></div> : <>
+          {!result ? <><div className="results-empty"><div className="road-crown"><i></i><i></i></div><h3>Ready for curve inputs</h3><p>Enter PC, speed, and radius to calculate transition stations and signed lane slopes.</p></div>{landxml && <SuperelevationAnalysis corridor={corridorDiagram} plan={planView} activeCurveIndex={selectedCurve} qa={corridorQa} inspector={diagramInspector} highlights={qaHighlights} onChartStation={inspectDiagramStation} onFinding={openQaFinding} />}</> : <>
             <div className="metric-grid"><article><span>Rate e</span><strong>{Number(result.e || 0).toFixed(4)}</strong><small>{result.e_source || "automatic"}</small></article><article><span>Runoff Lr</span><strong>{Number(result.Lr || 0).toFixed(2)}′</strong><small>{inputs.Lr_manual ? "override" : "automatic"}</small></article><article><span>Runout Lt</span><strong>{Number(result.Lt || 0).toFixed(2)}′</strong><small>{inputs.Lt_manual ? "override" : "automatic"}</small></article></div>
             <div className="criteria-reference">
               <p>Applicable drawing</p><strong>{applicableLabel}</strong>
@@ -549,6 +694,7 @@ export default function CalculatorApp() {
               <ul>{criteriaSources.map((source: Dict, index: number) => <li key={`${source.component}-${source.reference}-${index}`}><span>{source.component}</span><b>{source.reference}</b>{source.mode === "user_override" && <em>User override</em>}</li>)}</ul>
             </div>
             {(result.warnings || []).length > 0 && <div className="result-warning"><strong>Engineering review</strong><ul>{result.warnings.map((warning: string, index: number) => <li key={index}>{warning}</li>)}</ul></div>}
+            <SuperelevationAnalysis corridor={corridorDiagram} plan={planView} activeCurveIndex={selectedCurve} qa={corridorQa} inspector={diagramInspector} highlights={qaHighlights} onChartStation={inspectDiagramStation} onFinding={openQaFinding} />
             <div className="result-tabs"><h3>Lane events</h3><label className="check"><input type="checkbox" checked={inputs.station_format} onChange={(e) => update("station_format", e.target.checked)} /> Station labels</label></div>
             <div className="lane-tables">{(["left", "right"] as const).map((lane) => <div key={lane}><h4>{lane} lane</h4><table><thead><tr><th>Point</th><th>Station</th><th>Slope</th></tr></thead><tbody>{(lanes[lane] || []).map((row: Dict, index: number) => <tr key={index}><td>{row.label}</td><td>{row.station}</td><td className={String(row.slope_label).startsWith("+") ? "positive" : ""}>{row.slope_label}</td></tr>)}</tbody></table></div>)}</div>
             <div className="lookup"><h3>Engineering lookup</h3><div><input aria-label="Lookup station" placeholder="Station" value={lookupStation} onChange={(e) => setLookupStation(e.target.value)} /><input aria-label="Lookup superelevation" placeholder="Super (2%, 2, or 0.02)" value={lookupSlope} onChange={(e) => setLookupSlope(e.target.value)} /><button onClick={performLookup}>Lookup</button></div>{lookupResult && <div className="lookup-output">

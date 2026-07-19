@@ -13,7 +13,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 import Super
-from app_info import APP_VERSION, version_label
+from app_info import APP_VERSION, CALCULATION_ENGINE_VERSION, version_label
 import app_logging
 from criteria_info import MDOT_PROFILE_ID, TDOT_PROFILE_ID
 import super_batch
@@ -22,19 +22,22 @@ import super_exports
 import super_landxml
 import super_pdf
 import super_project
+import super_qa
 import super_updates
 from super_lane import build_lane_rows, lane_profile_points, parse_slope_percent, slope_at_station, slope_matches
 
 
-DARK_BG = "#151719"
-DARK_PANEL = "#202327"
-DARK_PANEL_ALT = "#25292e"
-DARK_FIELD = "#101214"
-DARK_BORDER = "#3b4148"
-DARK_TEXT = "#edf1f5"
-DARK_MUTED = "#aeb7c2"
-DARK_ACCENT = "#8ab4f8"
-DARK_SELECT = "#2f5f9f"
+DARK_BG = "#07100e"
+DARK_PANEL = "#0e1a17"
+DARK_PANEL_ALT = "#14231f"
+DARK_FIELD = "#091411"
+DARK_BORDER = "#2b433b"
+DARK_TEXT = "#e8f0ed"
+DARK_MUTED = "#91a49d"
+DARK_ACCENT = "#3bd1bd"
+DARK_SELECT = "#176f65"
+AMBER_ACCENT = "#e8b75d"
+RED_ACCENT = "#ff8178"
 
 IS_MACOS = sys.platform == "darwin"
 UI_FONT = (".AppleSystemUIFont", 11) if IS_MACOS else ("Segoe UI", 9)
@@ -76,6 +79,7 @@ class ModernSuperElevationUI(tk.Tk):
         self.last_meta: dict = {}
         self.curves: list[dict] = []
         self.project_path: str | None = None
+        self.excluded_landxml_curve_indexes: list[int] = []
         self._auto_job: str | None = None
         self._suspend_auto = False
         self._landxml_data: super_landxml.LandXMLData | None = None
@@ -83,6 +87,10 @@ class ModernSuperElevationUI(tk.Tk):
         self._landxml_source: dict[str, str] | None = None
         self._update_result_queue: queue.Queue[super_updates.UpdateInfo | None] = queue.Queue(maxsize=1)
         self._update_dialog: tk.Toplevel | None = None
+        self._desktop_diagram_data: dict | None = None
+        self._desktop_diagram_domain: tuple[float, float] | None = None
+        self._desktop_diagram_station: float | None = None
+        self.diagram_snap_events = tk.BooleanVar(value=True)
 
         self.vars = {
             "criteria_profile": tk.StringVar(value=MDOT_PROFILE_ID),
@@ -319,8 +327,13 @@ class ModernSuperElevationUI(tk.Tk):
         style.configure(".", **base_style)
         style.configure("TFrame", background=DARK_BG)
         style.configure("Panel.TFrame", background=DARK_PANEL)
+        style.configure("Topbar.TFrame", background="#0d292d")
         style.configure("TLabel", background=DARK_BG, foreground=DARK_TEXT)
         style.configure("Panel.TLabel", background=DARK_PANEL, foreground=DARK_TEXT)
+        style.configure("Topbar.TLabel", background="#0d292d", foreground="#f4fbf8")
+        style.configure("TopbarMuted.TLabel", background="#0d292d", foreground="#9fc1b7")
+        style.configure("Brand.Topbar.TLabel", font=(UI_FONT[0], 15, "bold"), background="#0d292d", foreground=DARK_ACCENT)
+        style.configure("Step.Panel.TLabel", font=(UI_FONT[0], 8, "bold"), background=DARK_PANEL, foreground=DARK_ACCENT)
         style.configure("Muted.Panel.TLabel", background=DARK_PANEL, foreground=DARK_MUTED)
         style.configure("Header.TLabel", font=HEADER_FONT, background=DARK_PANEL, foreground=DARK_TEXT)
         style.configure("Value.TLabel", font=VALUE_FONT, background=DARK_PANEL, foreground=DARK_TEXT)
@@ -362,7 +375,7 @@ class ModernSuperElevationUI(tk.Tk):
         style.configure(
             "TButton",
             padding=(10, 5),
-            background="#2b3036",
+            background=DARK_PANEL_ALT,
             foreground=DARK_TEXT,
             bordercolor=DARK_BORDER,
             lightcolor=DARK_BORDER,
@@ -372,11 +385,11 @@ class ModernSuperElevationUI(tk.Tk):
         )
         style.map(
             "TButton",
-            background=[("active", "#39414a"), ("pressed", "#1f5f99")],
+            background=[("active", "#1d342e"), ("pressed", "#176f65")],
             foreground=[("disabled", DARK_MUTED)],
         )
-        style.configure("Primary.TButton", padding=(12, 6), background="#245d8f", foreground="#ffffff")
-        style.map("Primary.TButton", background=[("active", "#2d74ad"), ("pressed", "#1f527e")])
+        style.configure("Primary.TButton", padding=(12, 6), background="#168f82", foreground="#ffffff")
+        style.map("Primary.TButton", background=[("active", "#20a493"), ("pressed", "#11776d")])
         style.configure("TCheckbutton", background=DARK_PANEL, foreground=DARK_TEXT, indicatorbackground=DARK_FIELD)
         style.map(
             "TCheckbutton",
@@ -404,15 +417,29 @@ class ModernSuperElevationUI(tk.Tk):
         )
         style.map(
             "TNotebook.Tab",
-            background=[("selected", DARK_SELECT), ("active", "#39414a")],
+            background=[("selected", DARK_SELECT), ("active", "#1d342e")],
             foreground=[("selected", "#ffffff"), ("active", DARK_TEXT)],
         )
 
     def _build_layout(self) -> None:
+        header = ttk.Frame(self, style="Topbar.TFrame", padding=(16, 10))
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(2, weight=1)
+        ttk.Label(header, text="SE", style="Brand.Topbar.TLabel").grid(row=0, column=0, rowspan=2, padx=(0, 14))
+        ttk.Label(header, text="CIVIL DESIGN WORKSPACE", style="TopbarMuted.TLabel").grid(row=0, column=1, sticky="sw")
+        ttk.Label(header, text="Superelevation Calculator", style="Topbar.TLabel", font=HEADER_FONT).grid(
+            row=1, column=1, sticky="nw"
+        )
+        ttk.Label(
+            header,
+            text=f"LOCAL PROCESSING   APP {APP_VERSION}   ENGINE {CALCULATION_ENGINE_VERSION}",
+            style="TopbarMuted.TLabel",
+        ).grid(row=0, column=2, rowspan=2, sticky="e")
+
         root = ttk.Frame(self, padding=10)
-        root.grid(row=0, column=0, sticky="nsew")
+        root.grid(row=1, column=0, sticky="nsew")
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
         if IS_MACOS:
             root.columnconfigure(0, weight=0, minsize=280)
             root.columnconfigure(1, weight=2, minsize=460)
@@ -434,7 +461,7 @@ class ModernSuperElevationUI(tk.Tk):
         panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         panel.rowconfigure(3, weight=1)
 
-        ttk.Label(panel, text="Project", style="Header.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(panel, text="01  Project", style="Header.TLabel").grid(row=0, column=0, sticky="w")
         buttons = ttk.Frame(panel, style="Panel.TFrame")
         buttons.grid(row=1, column=0, sticky="ew", pady=(8, 10))
         for idx, (label, command) in enumerate(
@@ -520,7 +547,7 @@ class ModernSuperElevationUI(tk.Tk):
         body.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
 
         row = 0
-        row = self._section(body, row, "Curve")
+        row = self._section(body, row, "02  Curve inputs")
         row = self._combo(body, row, "LandXML curve", "landxml_curve", [])
         row = self._field(body, row, "Alignment name", "alignment_name")
         row = self._field(body, row, "Curve name", "curve_name")
@@ -571,21 +598,23 @@ class ModernSuperElevationUI(tk.Tk):
     def _build_output_bar(self, parent: ttk.Frame) -> None:
         bar = ttk.Frame(parent, style="Panel.TFrame", padding=(10, 8))
         bar.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-        bar.columnconfigure(5, weight=1)
+        bar.columnconfigure(6, weight=1)
+
+        ttk.Label(bar, text="04  Review & export", style="Header.TLabel").grid(row=0, column=0, sticky="w", padx=(0, 16))
 
         ttk.Checkbutton(
             bar,
             text="Auto-open PDF",
             variable=self.vars["auto_open_pdf"],
             style="TCheckbutton",
-        ).grid(row=0, column=0, sticky="w", padx=(0, 10))
+        ).grid(row=0, column=1, sticky="w", padx=(0, 10))
         ttk.Button(bar, text="Export PDF", command=self._export_pdf, style="Primary.TButton").grid(
-            row=0, column=1, padx=(0, 6)
+            row=0, column=2, padx=(0, 6)
         )
-        ttk.Button(bar, text="Export ORD CSV", command=self._export_ord_csv).grid(row=0, column=2, padx=(0, 6))
+        ttk.Button(bar, text="Export ORD CSV", command=self._export_ord_csv).grid(row=0, column=3, padx=(0, 6))
         self.overlay_button = ttk.Button(bar, text="Export Overlay DXF", command=self._export_overlay_dxf)
-        self.overlay_button.grid(row=0, column=3, padx=(0, 6))
-        ttk.Button(bar, text="DXF Issues", command=self._show_overlay_issues).grid(row=0, column=4, padx=(0, 10))
+        self.overlay_button.grid(row=0, column=4, padx=(0, 6))
+        ttk.Button(bar, text="DXF Issues", command=self._show_overlay_issues).grid(row=0, column=5, padx=(0, 10))
         self.overlay_status = tk.StringVar(value="DXF: select LandXML and calculate a curve")
         ttk.Label(
             bar,
@@ -593,16 +622,15 @@ class ModernSuperElevationUI(tk.Tk):
             style="Muted.Panel.TLabel",
             wraplength=420,
             justify="left",
-        ).grid(row=0, column=5, sticky="ew")
+        ).grid(row=0, column=6, sticky="ew")
 
     def _build_results_panel(self, parent: ttk.Frame) -> None:
         panel = ttk.Frame(parent, style="Panel.TFrame", padding=10)
         panel.grid(row=0, column=2, sticky="nsew")
         panel.columnconfigure(0, weight=1)
         panel.rowconfigure(2, weight=1)
-        panel.rowconfigure(4, weight=1)
 
-        ttk.Label(panel, text="Results", style="Header.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(panel, text="03  Results", style="Header.TLabel").grid(row=0, column=0, sticky="w")
         self.summary = ttk.Frame(panel, style="Panel.TFrame")
         self.summary.grid(row=1, column=0, sticky="ew", pady=(8, 8))
         for idx, label in enumerate(["e", "Lr", "Lt"]):
@@ -611,8 +639,63 @@ class ModernSuperElevationUI(tk.Tk):
                 row=1, column=idx, sticky="w", padx=(0, 18)
             )
 
+        notebook = ttk.Notebook(panel)
+        notebook.grid(row=2, column=0, sticky="nsew")
+        diagram_tab = ttk.Frame(notebook, style="Panel.TFrame", padding=8)
+        details_tab = ttk.Frame(notebook, style="Panel.TFrame", padding=6)
+        notebook.add(diagram_tab, text="Diagram")
+        notebook.add(details_tab, text="Details")
+
+        diagram_tab.columnconfigure(0, weight=1)
+        diagram_tab.rowconfigure(1, weight=1)
+        diagram_tools = ttk.Frame(diagram_tab, style="Panel.TFrame")
+        diagram_tools.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self.diagram_range = tk.StringVar(value="Calculate a curve to view its lane profile")
+        ttk.Label(diagram_tools, textvariable=self.diagram_range, style="Muted.Panel.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        diagram_tools.columnconfigure(0, weight=1)
+        ttk.Checkbutton(diagram_tools, text="Snap events", variable=self.diagram_snap_events).grid(
+            row=0, column=1, padx=(4, 6)
+        )
+        ttk.Button(diagram_tools, text="-", width=3, command=lambda: self._zoom_desktop_diagram(1.3)).grid(
+            row=0, column=2, padx=(4, 2)
+        )
+        ttk.Button(diagram_tools, text="+", width=3, command=lambda: self._zoom_desktop_diagram(0.77)).grid(
+            row=0, column=3, padx=2
+        )
+        ttk.Button(diagram_tools, text="Reset", command=self._reset_desktop_diagram_zoom).grid(
+            row=0, column=4, padx=(2, 0)
+        )
+        self.diagram_canvas = tk.Canvas(
+            diagram_tab,
+            height=330,
+            background=DARK_FIELD,
+            highlightbackground=DARK_BORDER,
+            highlightcolor=DARK_ACCENT,
+            highlightthickness=1,
+            cursor="crosshair",
+        )
+        self.diagram_canvas.grid(row=1, column=0, sticky="nsew")
+        self.diagram_canvas.bind("<Configure>", lambda _event: self._draw_desktop_diagram())
+        self.diagram_canvas.bind("<Button-1>", self._inspect_desktop_diagram)
+        self.diagram_canvas.bind("<MouseWheel>", self._wheel_desktop_diagram)
+        self.diagram_canvas.bind("<Button-4>", lambda event: self._wheel_desktop_diagram(event, -1))
+        self.diagram_canvas.bind("<Button-5>", lambda event: self._wheel_desktop_diagram(event, 1))
+        self.diagram_inspector = tk.StringVar(value="Select a point on the diagram to inspect station, slope, and criteria.")
+        ttk.Label(
+            diagram_tab,
+            textvariable=self.diagram_inspector,
+            style="Muted.Panel.TLabel",
+            wraplength=420,
+            justify="left",
+        ).grid(row=2, column=0, sticky="ew", pady=(8, 0))
+
+        details_tab.columnconfigure(0, weight=1)
+        details_tab.rowconfigure(0, weight=1)
+        details_tab.rowconfigure(2, weight=1)
         self.output = tk.Text(
-            panel,
+            details_tab,
             wrap="word",
             width=(35 if IS_MACOS else 42),
             height=12,
@@ -626,10 +709,10 @@ class ModernSuperElevationUI(tk.Tk):
             relief="flat",
             borderwidth=8,
         )
-        self.output.grid(row=2, column=0, sticky="nsew")
+        self.output.grid(row=0, column=0, sticky="nsew")
 
-        lookup = ttk.Frame(panel, style="Panel.TFrame")
-        lookup.grid(row=3, column=0, sticky="ew", pady=(10, 6))
+        lookup = ttk.Frame(details_tab, style="Panel.TFrame")
+        lookup.grid(row=1, column=0, sticky="ew", pady=(8, 6))
         if IS_MACOS:
             ttk.Label(lookup, text="Lookup station", style="Panel.TLabel").grid(row=0, column=0, sticky="w")
             ttk.Entry(lookup, textvariable=self.vars["lookup_station"], width=8).grid(
@@ -649,7 +732,7 @@ class ModernSuperElevationUI(tk.Tk):
             ttk.Button(lookup, text="Lookup", command=self._compute_lookup).grid(row=0, column=4)
 
         self.table = tk.Text(
-            panel,
+            details_tab,
             wrap="none",
             width=(35 if IS_MACOS else 42),
             height=8,
@@ -663,7 +746,142 @@ class ModernSuperElevationUI(tk.Tk):
             relief="flat",
             borderwidth=8,
         )
-        self.table.grid(row=4, column=0, sticky="nsew")
+        self.table.grid(row=2, column=0, sticky="nsew")
+
+    def _set_desktop_diagram(self, results: dict, direction: str) -> None:
+        self._desktop_diagram_data = super_qa.curve_diagram(results, direction)
+        domain = self._desktop_diagram_data.get("domain", {})
+        self._desktop_diagram_domain = (float(domain.get("start_ft", 0.0)), float(domain.get("end_ft", 0.0)))
+        self._desktop_diagram_station = None
+        self.diagram_inspector.set("Select a point on the diagram to inspect station, slope, and criteria.")
+        self._draw_desktop_diagram()
+
+    def _reset_desktop_diagram_zoom(self) -> None:
+        if not self._desktop_diagram_data:
+            return
+        domain = self._desktop_diagram_data["domain"]
+        self._desktop_diagram_domain = (float(domain["start_ft"]), float(domain["end_ft"]))
+        self._draw_desktop_diagram()
+
+    def _zoom_desktop_diagram(self, factor: float, anchor_ratio: float = 0.5) -> None:
+        if not self._desktop_diagram_data or not self._desktop_diagram_domain:
+            return
+        full = self._desktop_diagram_data["domain"]
+        full_start, full_end = float(full["start_ft"]), float(full["end_ft"])
+        start, end = self._desktop_diagram_domain
+        full_span = full_end - full_start
+        if full_span <= 0:
+            return
+        span = min(full_span, max(max(full_span / 120.0, 1.0), (end - start) * factor))
+        anchor = start + (end - start) * anchor_ratio
+        next_start = anchor - span * anchor_ratio
+        next_end = next_start + span
+        if next_start < full_start:
+            next_start, next_end = full_start, full_start + span
+        if next_end > full_end:
+            next_start, next_end = full_end - span, full_end
+        self._desktop_diagram_domain = (next_start, next_end)
+        self._draw_desktop_diagram()
+
+    def _wheel_desktop_diagram(self, event: tk.Event, direction: int | None = None) -> str:
+        width = max(1, self.diagram_canvas.winfo_width() - 72)
+        ratio = max(0.0, min(1.0, (float(event.x) - 52.0) / width))
+        wheel_direction = direction if direction is not None else (-1 if float(event.delta) > 0 else 1)
+        self._zoom_desktop_diagram(0.78 if wheel_direction < 0 else 1.28, ratio)
+        return "break"
+
+    def _inspect_desktop_diagram(self, event: tk.Event) -> None:
+        if not self.last_results or not self._desktop_diagram_domain:
+            return
+        width = max(1, self.diagram_canvas.winfo_width() - 72)
+        ratio = max(0.0, min(1.0, (float(event.x) - 52.0) / width))
+        start, end = self._desktop_diagram_domain
+        station = start + (end - start) * ratio
+        snap_label = ""
+        if self.diagram_snap_events.get() and self._desktop_diagram_data.get("snap_points"):
+            nearest = min(
+                self._desktop_diagram_data["snap_points"],
+                key=lambda point: abs(float(point["station_ft"]) - station),
+            )
+            threshold = max((end - start) * 14.0 / width, 0.5)
+            if abs(float(nearest["station_ft"]) - station) <= threshold:
+                station = float(nearest["station_ft"])
+                snap_label = f" [{'/'.join(nearest['labels'])}]"
+        self._desktop_diagram_station = station
+        lookup = super_qa.diagram_lookup(self.last_results, self.last_meta.get("curve_direction", "left"), station)
+        left = lookup["lanes"]["left"]
+        right = lookup["lanes"]["right"]
+        self.diagram_inspector.set(
+            f"{lookup['station']}{snap_label}  |  Left {left['slope_label']} - {left['phase']} - {left['criterion']['reference']}  |  "
+            f"Right {right['slope_label']} - {right['phase']} - {right['criterion']['reference']}"
+        )
+        self._draw_desktop_diagram()
+
+    def _draw_desktop_diagram(self) -> None:
+        canvas = getattr(self, "diagram_canvas", None)
+        if canvas is None:
+            return
+        canvas.delete("all")
+        width = max(canvas.winfo_width(), 260)
+        height = max(canvas.winfo_height(), 220)
+        left, right, top, bottom = 52.0, width - 20.0, 22.0, height - 42.0
+        if not self._desktop_diagram_data or not self._desktop_diagram_domain:
+            canvas.create_text(width / 2, height / 2, text="Calculate a curve to view the diagram", fill=DARK_MUTED, font=UI_FONT)
+            return
+        start, end = self._desktop_diagram_domain
+        if end <= start:
+            return
+        profiles = self._desktop_diagram_data["profiles"]
+        max_slope = max(3.0, max(abs(float(point["slope_pct"])) for lane in profiles.values() for point in lane) * 1.2)
+
+        def x(station: float) -> float:
+            return left + (station - start) / (end - start) * (right - left)
+
+        def y(slope: float) -> float:
+            return top + (max_slope - slope) / (2 * max_slope) * (bottom - top)
+
+        for index in range(5):
+            slope = max_slope - index * max_slope / 2
+            py = y(slope)
+            canvas.create_line(left, py, right, py, fill="#263b34", dash=(3, 5))
+            canvas.create_text(left - 7, py, text=f"{slope:.0f}%", fill=DARK_MUTED, anchor="e", font=MONO_FONT)
+        for index in range(5):
+            station = start + (end - start) * index / 4
+            px = x(station)
+            canvas.create_line(px, top, px, bottom, fill="#1c2c27")
+            label = Super.format_result_station(self.last_results or {}, station, True).split(".", 1)[0]
+            canvas.create_text(px, bottom + 14, text=label, fill=DARK_MUTED, font=(MONO_FONT[0], 8))
+        canvas.create_line(left, y(0.0), right, y(0.0), fill="#80918c", width=1)
+
+        for marker in self._desktop_diagram_data.get("markers", []):
+            station = float(marker["station_ft"])
+            if start <= station <= end and marker["kind"] in {"PC", "PT", "STATION EQUATION"}:
+                px = x(station)
+                color = AMBER_ACCENT if marker["kind"] == "STATION EQUATION" else "#69837b"
+                canvas.create_line(px, top, px, bottom, fill=color, dash=(3, 3))
+                canvas.create_text(px + 3, top + 3, text=marker["label"], fill=color, anchor="nw", font=(MONO_FONT[0], 8))
+
+        for lane, color in (("left", DARK_ACCENT), ("right", AMBER_ACCENT)):
+            raw = [(float(point["station_ft"]), float(point["slope_pct"])) for point in profiles[lane]]
+            if not raw:
+                continue
+            sampled = [(start, slope_at_station(raw, start))]
+            sampled.extend((station, slope) for station, slope in raw if start < station < end)
+            sampled.append((end, slope_at_station(raw, end)))
+            coords = [coordinate for station, slope in sampled for coordinate in (x(station), y(slope))]
+            if len(coords) >= 4:
+                canvas.create_line(*coords, fill=color, width=2, smooth=False)
+        canvas.create_line(left, bottom + 31, left + 18, bottom + 31, fill=DARK_ACCENT, width=2)
+        canvas.create_text(left + 23, bottom + 31, text="Left lane", fill=DARK_MUTED, anchor="w", font=(UI_FONT[0], 8))
+        canvas.create_line(left + 90, bottom + 31, left + 108, bottom + 31, fill=AMBER_ACCENT, width=2)
+        canvas.create_text(left + 113, bottom + 31, text="Right lane", fill=DARK_MUTED, anchor="w", font=(UI_FONT[0], 8))
+        if self._desktop_diagram_station is not None and start <= self._desktop_diagram_station <= end:
+            px = x(self._desktop_diagram_station)
+            canvas.create_line(px, top, px, bottom, fill="#ffffff", width=1)
+        self.diagram_range.set(
+            f"{Super.format_result_station(self.last_results or {}, start, True)} to "
+            f"{Super.format_result_station(self.last_results or {}, end, True)}  -  mouse wheel to zoom"
+        )
 
     def _show_instructions(self) -> None:
         """Show in-app guidance without requiring the user to leave the calculator."""
@@ -1209,6 +1427,9 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         left_rows, right_rows = build_lane_rows(results, meta.get("curve_direction", "left"), station_format)
         table_lines = self._format_lane_table("Left Lane", left_rows) + [""] + self._format_lane_table("Right Lane", right_rows)
         self._write_text(self.table, "\n".join(table_lines))
+        if lookup_lines is None:
+            self.last_meta = meta
+            self._set_desktop_diagram(results, meta.get("curve_direction", "left"))
 
     def _format_lane_table(self, title: str, rows: list[dict]) -> list[str]:
         lines = [title, f"{'Point':<14}{'Station':<16}{'Slope (%)':>10}  Note", "-" * 68]
@@ -1369,9 +1590,16 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             var.set("auto")
         self._write_text(self.output, "")
         self._write_text(self.table, "")
+        self._desktop_diagram_data = None
+        self._desktop_diagram_domain = None
+        self._desktop_diagram_station = None
+        self.diagram_range.set("Calculate a curve to view its lane profile")
+        self.diagram_inspector.set("Select a point on the diagram to inspect station, slope, and criteria.")
+        self._draw_desktop_diagram()
         self._landxml_data = None
         self._landxml_curve_presets = []
         self._landxml_source = None
+        self.excluded_landxml_curve_indexes = []
         self.landxml_status.set("LandXML: none")
         self._refresh_landxml_curve_picker()
         self._update_advanced_summary()
@@ -1390,16 +1618,19 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             "last_results": self.last_results,
             "last_meta": self.last_meta,
             "landxml_source": self._landxml_source,
+            "excluded_landxml_curve_indexes": self.excluded_landxml_curve_indexes,
         }
 
     def _save_project(self) -> None:
-        path = self.project_path
-        if not path:
-            path = filedialog.asksaveasfilename(
-                defaultextension=".json",
-                filetypes=[("Project files", "*.json")],
-                title="Save Project",
-            )
+        dialog_options = {
+            "defaultextension": ".json",
+            "filetypes": [("Project files", "*.json")],
+            "title": "Save Project",
+        }
+        if self.project_path:
+            dialog_options["initialdir"] = os.path.dirname(self.project_path)
+            dialog_options["initialfile"] = os.path.basename(self.project_path)
+        path = filedialog.asksaveasfilename(**dialog_options)
         if not path:
             return
         try:
@@ -1444,6 +1675,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             self.curve_listbox.insert("end", super_project.curve_label(curve.get("meta", {}), curve.get("results")))
         self.last_results = data.get("last_results")
         self.last_meta = data.get("last_meta", {}) or {}
+        self.excluded_landxml_curve_indexes = data.get("excluded_landxml_curve_indexes", []) or []
         self._landxml_data = None
         self._landxml_curve_presets = []
         self._landxml_source = data.get("landxml_source")
@@ -1453,6 +1685,9 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         else:
             self._write_text(self.output, "")
             self._write_text(self.table, "")
+            self._desktop_diagram_data = None
+            self._desktop_diagram_domain = None
+            self._draw_desktop_diagram()
         self._suspend_auto = False
         self._update_overlay_button()
 
@@ -1485,6 +1720,7 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
             messagebox.showerror("Add All LandXML Curves", str(exc))
             return
         self.curves = curves
+        self.excluded_landxml_curve_indexes = []
         self.curve_listbox.delete(0, "end")
         for curve in self.curves:
             self.curve_listbox.insert("end", super_project.curve_label(curve.get("meta", {}), curve.get("results")))
