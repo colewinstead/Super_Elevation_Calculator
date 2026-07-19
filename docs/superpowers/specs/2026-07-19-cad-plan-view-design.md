@@ -6,6 +6,8 @@ Make the browser Plan View represent the overlay DXF model space from the same e
 
 The alignment layer will change from its current brown ACI 55 appearance to neutral gray ACI 8 in both Plan View and exported overlay DXFs.
 
+The current overlay DXF drawing is the accepted reference. Entity types, coordinates, labels, leaders, rotations, alignments, text sizes, spacing, layers, units, and warnings must remain unchanged. The ACI 55 to ACI 8 alignment color update is the only intentional DXF output change.
+
 ## Architecture
 
 `super_dxf` will own a shared overlay drawing model. The existing overlay construction logic will populate a `DxfWriter` with `LINE` and `TEXT` records once. Two consumers will use those records:
@@ -44,6 +46,8 @@ Extract the body of `export_overlay_dxf` into a builder that accepts curves, par
 - Text rotation, alignment, spacing, and font style.
 
 `export_overlay_dxf(path, curves, landxml, config)` will call this builder and save its records. No formula, stationing, lane-event, or public export behavior changes are in scope.
+
+Before refactoring, regression tests will capture the existing writer records for representative exports. The shared builder must reproduce those records exactly, apart from the explicitly approved alignment color style change.
 
 ## Browser Rendering
 
@@ -85,6 +89,7 @@ An empty drawing response will show a concise CAD-preview empty state rather tha
 Python tests will verify:
 
 - The preview and export paths use the same builder records.
+- Refactoring preserves the accepted pre-refactor entity record sequence exactly.
 - Representative `LINE` and `TEXT` records preserve coordinates, layers, rotations, alignments, text heights, and styles.
 - ACI 8 is applied to the alignment layer in generated DXFs.
 - Drawing bounds include leaders and text beyond the alignment extents.
