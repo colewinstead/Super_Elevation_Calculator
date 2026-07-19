@@ -418,9 +418,8 @@ export default function CalculatorApp() {
       : `Removed the calculated curve and excluded source Curve ${Number(sourceIndex) + 1} from corridor QA.`);
   };
 
-  const loadCurve = async (index: number) => {
+  const loadCurveFrom = async (curve: Dict, index: number, stationFormat = inputs.station_format) => {
     setSelectedCurve(index);
-    const curve = curves[index];
     if (!curve?.results) return;
     if (curve.meta?.landxml_curve_index != null) setLandxmlPreset(Number(curve.meta.landxml_curve_index));
     const values = curve.results.inputs || {};
@@ -435,8 +434,12 @@ export default function CalculatorApp() {
       Lr_manual: values.Lr_manual == null ? "" : String(values.Lr_manual), Lt_manual: values.Lt_manual == null ? "" : String(values.Lt_manual),
       curve_notes: curve.notes || "",
     }));
-    const presented = await run("Opening curve", () => call("present_results", { results: curve.results, direction: curve.meta?.curve_direction || "left", station_format: inputs.station_format }));
+    const presented = await run("Opening curve", () => call("present_results", { results: curve.results, direction: curve.meta?.curve_direction || "left", station_format: stationFormat }));
     if (presented) setCalculation(presented);
+  };
+
+  const loadCurve = async (index: number) => {
+    await loadCurveFrom(curves[index], index);
   };
 
   const addAll = async () => {
@@ -450,16 +453,10 @@ export default function CalculatorApp() {
       setCurves(result);
       setExcludedCurveIndexes([]);
       setSelectedCurve(result.length ? 0 : -1);
-      if (result.length) await loadCurveFrom(result[0]);
+      if (result.length) await loadCurveFrom(result[0], 0);
       setDirty(true);
       setNotice(`Built ${result.length} LandXML curves for combined export.`);
     }
-  };
-
-  const loadCurveFrom = async (curve: Dict) => {
-    if (!curve?.results) return;
-    const presented = await call("present_results", { results: curve.results, direction: curve.meta?.curve_direction || "left", station_format: inputs.station_format });
-    setCalculation(presented);
   };
 
   const exportCurves = () => curves.length ? curves : (curveObject() ? [curveObject()!] : []);
@@ -515,19 +512,34 @@ export default function CalculatorApp() {
     }
     const loaded = await run("Opening project", () => call("project_load", { content }));
     if (!loaded) return;
-    setInputs({ ...INITIAL_INPUTS, ...(loaded.project.vars || {}) });
-    setCurves(loaded.project.curves || []);
+    const restoredInputs = { ...INITIAL_INPUTS, ...(loaded.project.vars || {}) };
+    const restoredCurves = loaded.project.curves || [];
+    setInputs(restoredInputs);
+    setCurves(restoredCurves);
     setExcludedCurveIndexes(loaded.project.excluded_landxml_curve_indexes || []);
-    if (loaded.project.last_results) {
+    setLandxml(loaded.landxml || null);
+
+    const hasLandxmlCurves = (loaded.landxml?.curve_presets?.length || 0) > 0;
+    const firstLandxmlCurve = hasLandxmlCurves
+      ? restoredCurves.findIndex((curve: Dict) => Number(curve.meta?.landxml_curve_index) === 0)
+      : -1;
+
+    if (firstLandxmlCurve >= 0) {
+      await loadCurveFrom(restoredCurves[firstLandxmlCurve], firstLandxmlCurve, restoredInputs.station_format);
+    } else if (hasLandxmlCurves) {
+      applyPreset(0, loaded.landxml);
+      setSelectedCurve(-1);
+    } else if (loaded.project.last_results) {
       const presented = await run("Restoring results", () => call("present_results", { results: loaded.project.last_results, direction: loaded.project.last_meta?.curve_direction || "left", station_format: loaded.project.vars?.station_format !== false }));
       if (!presented) return;
       setCalculation(presented);
+      setLandxmlPreset(-1);
+      setSelectedCurve(-1);
     } else {
       setCalculation(null);
+      setLandxmlPreset(-1);
+      setSelectedCurve(-1);
     }
-    setLandxml(loaded.landxml || null);
-    setLandxmlPreset(-1);
-    setSelectedCurve(-1);
     setDirty(false);
     setNotice(`Opened ${file.name}${loaded.landxml ? " with embedded LandXML" : ""}.`);
   };

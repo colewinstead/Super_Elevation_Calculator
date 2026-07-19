@@ -113,6 +113,14 @@ test("shows concise guidance for invalid project files", async () => {
   assert.match(source, /The selected project file is empty/);
 });
 
+test("defaults embedded LandXML projects to the first curve", async () => {
+  const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /const hasLandxmlCurves/);
+  assert.match(source, /landxml_curve_index\) === 0/);
+  assert.match(source, /loadCurveFrom\(restoredCurves\[firstLandxmlCurve\], firstLandxmlCurve/);
+  assert.match(source, /applyPreset\(0, loaded\.landxml\)/);
+});
+
 test("ships interactive diagram zoom and corridor QA controls", async () => {
   const source = await readFile(new URL("../app/SuperelevationAnalysis.tsx", import.meta.url), "utf8");
   const planSource = await readFile(new URL("../app/SuperelevationPlanView.tsx", import.meta.url), "utf8");
