@@ -67,6 +67,25 @@ assert.deepEqual(
 assert.ok(tdot.lanes.left.length > 0);
 assert.ok(tdot.lanes.right.length > 0);
 
+const landxmlPayload = JSON.stringify({
+  filename: "tdot-coordinate-test.xml",
+  content: `<?xml version="1.0"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units><Imperial linearUnit="USSurveyFoot" /></Units>
+  <CoordinateSystem horizontalDatum="NAD83(2011)" horizontalCoordinateSystemName="TN83/2011F" />
+  <Alignments><Alignment name="TDOT Test" length="100" staStart="0"><CoordGeom>
+    <Line length="100"><Start>500000 1200000 0</Start><End>500100 1200000 0</End></Line>
+  </CoordGeom></Alignment></Alignments>
+</LandXML>`,
+});
+pyodide.globals.set("landxml_payload", landxmlPayload);
+const landxmlProxy = pyodide.runPython(`super_service.dispatch("parse_landxml", landxml_payload)`);
+const landxml = landxmlProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+landxmlProxy.destroy();
+assert.equal(landxml.summary.coordinate_system.status, "recognized");
+assert.equal(landxml.summary.coordinate_system.code, "6576");
+assert.equal(landxml.summary.coordinate_system.preserve_xy, true);
+
 pyodide.globals.set("results_payload", JSON.stringify({
   curves: [{ results: calculation.results, meta: { curve_direction: "right" }, notes: "" }],
 }));

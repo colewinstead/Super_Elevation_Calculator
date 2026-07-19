@@ -52,15 +52,15 @@ button:disabled { opacity: .48; cursor: not-allowed; transform: none; }
 .button-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 16px; }
 .button { display: grid; place-items: center; }
 .field { display: grid; gap: 5px; margin-bottom: 12px; }
-.field span, .crs-fields span { color: #9aada6; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .055em; }
+.field span, .crs-status span { color: #9aada6; font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .055em; }
 .field b { color: var(--red); }
 .field small { color: #789189; font-size: .72rem; line-height: 1.35; }
 .result-warning { margin: 12px 0; padding: 12px 14px; border: 1px solid #8b5a28; border-radius: 7px; background: #241b10; color: #f1d5ad; }
 .result-warning strong { color: #ffd69a; }
 .result-warning ul { margin: 7px 0 0; padding-left: 18px; }
-.field input, .field select, .field textarea, .lookup input, .crs-fields select { width: 100%; min-height: 41px; border: 1px solid #2e443d; border-radius: 7px; background: #091411; color: var(--ink); padding: 8px 10px; outline: none; }
+.field input, .field select, .field textarea, .lookup input { width: 100%; min-height: 41px; border: 1px solid #2e443d; border-radius: 7px; background: #091411; color: var(--ink); padding: 8px 10px; outline: none; }
 .field textarea { resize: vertical; }
-.field input:focus, .field select:focus, .field textarea:focus, .lookup input:focus, .crs-fields select:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(8,127,123,.12); }
+.field input:focus, .field select:focus, .field textarea:focus, .lookup input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(8,127,123,.12); }
 .source-card { margin: 17px 0; padding: 13px; border: 1px solid #29433a; border-radius: 9px; background: #0a1814; }
 .source-card > div { margin-bottom: 10px; }
 .source-card strong { display: block; margin-top: 3px; font-size: .82rem; word-break: break-word; }
@@ -141,10 +141,9 @@ td:last-child, th:last-child { text-align: right; }
 .exports { max-width: calc(1800px - 36px); margin: 0 auto 18px; padding: 16px 18px; display: grid; grid-template-columns: .8fr 1.4fr auto; align-items: center; gap: 18px; }
 .exports > div:first-child { display: grid; grid-template-columns: auto 1fr; column-gap: 9px; }
 .exports > div:first-child p:last-child { grid-column: 2; margin: 3px 0 0; color: var(--muted); font-size: .7rem; }
-.crs-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.crs-fields label { min-width: 0; }
-.crs-fields span { display: block; margin-bottom: 4px; }
-.crs-fields select { min-height: 36px; font-size: .66rem; }
+.crs-status { display: grid; gap: 4px; min-width: 0; padding: 10px 12px; border: 1px solid #2e443d; border-radius: 7px; background: #091411; }
+.crs-status strong { color: var(--ink); font: 650 .72rem var(--font-plex-mono), monospace; }
+.crs-status small { color: var(--muted); font-size: .64rem; }
 .export-buttons { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .toast { position: sticky; z-index: 20; top: 8px; max-width: 780px; margin: 10px auto -4px; display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 11px 13px; border: 1px solid; border-radius: 9px; box-shadow: 0 10px 30px rgba(0,0,0,.12); font-size: .74rem; }
 .toast.notice { color: #a0eadc; border-color: #286e60; background: #102b25; }
@@ -174,11 +173,11 @@ footer p { margin: 0; max-width: 820px; }
   .privacy-strip .version { width: 100%; margin-left: 0; }
   .workspace { display: block; padding: 10px; }
   .project-panel, .inputs-panel, .results-panel { min-height: auto; margin-bottom: 10px; padding: 15px; }
-  .form-grid, .advanced-grid, .lane-tables, .metric-grid, .crs-fields { grid-template-columns: 1fr; }
+  .form-grid, .advanced-grid, .lane-tables, .metric-grid { grid-template-columns: 1fr; }
   .compute-bar { flex-wrap: wrap; }
   .compute-bar .primary { width: 100%; margin-left: 0; }
   .exports { margin: 0 10px 10px; display: block; }
-  .crs-fields { margin: 14px 0; }
+  .crs-status { margin: 14px 0; }
   .export-buttons { justify-content: stretch; }
   .export-buttons button { flex: 1 1 45%; }
   .lookup > div { grid-template-columns: 1fr; }

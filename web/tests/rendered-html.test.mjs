@@ -39,6 +39,8 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.match(source, /Select LandXML/i);
   assert.match(source, /Curve inputs/i);
   assert.match(source, /Review & export/i);
+  assert.match(source, /preserves the LandXML XY coordinates without reprojection/i);
+  assert.doesNotMatch(source, /Destination CRS|targetCrs|coordinate_config/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 

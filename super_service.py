@@ -48,7 +48,6 @@ def application_manifest() -> dict[str, Any]:
             "tdot_facility": ["undivided"],
             "area": ["rural", "urban", "local"],
             "speed": [str(value) for value in range(15, 85, 5)],
-            "coordinate_systems": list(super_dxf.MDOT_COORDINATE_SYSTEMS),
             "profiles": {
                 MDOT_PROFILE_ID: {
                     "facility": ["centerline", "outside edge"],
@@ -166,6 +165,7 @@ def parse_landxml(content: str, filename: str = "alignment.xml") -> dict[str, An
             "start_station": data.start_station,
             "alignment_length": data.alignment_length,
             "linear_unit": data.linear_unit,
+            "coordinate_system": super_landxml.coordinate_system_summary(data.coordinate_system),
             "station_equation_count": len(data.station_equations),
             "curve_count": len(data.curves),
             "warnings": list(data.warnings),
@@ -301,9 +301,7 @@ def export_detail_dxf(curves: list[dict]) -> dict[str, Any]:
     return {"content": content, "warnings": list(dict.fromkeys(warnings + _calculation_warnings(curves)))}
 
 
-def export_overlay_dxf(
-    curves: list[dict], landxml_source: dict[str, str], coordinate_config: dict[str, Any]
-) -> dict[str, Any]:
+def export_overlay_dxf(curves: list[dict], landxml_source: dict[str, str]) -> dict[str, Any]:
     source = super_project.normalize_landxml_source(landxml_source)
     if not source:
         raise ValueError("Select LandXML before exporting an overlay DXF.")
@@ -311,9 +309,7 @@ def export_overlay_dxf(
     errors, diagnostic_warnings = super_dxf.overlay_export_issues(curves, data)
     if errors:
         raise ValueError("\n".join(errors))
-    content, warnings = _temporary_export(
-        ".dxf", lambda path: super_dxf.export_overlay_dxf(path, curves, data, coordinate_config)
-    )
+    content, warnings = _temporary_export(".dxf", lambda path: super_dxf.export_overlay_dxf(path, curves, data))
     return {
         "content": content,
         "warnings": list(dict.fromkeys(diagnostic_warnings + warnings + _calculation_warnings(curves))),
@@ -342,7 +338,7 @@ def dispatch(operation: str, payload_json: str = "{}") -> Any:
         "export_pdf": lambda: export_pdf(payload["curves"]),
         "export_detail_dxf": lambda: export_detail_dxf(payload["curves"]),
         "export_overlay_dxf": lambda: export_overlay_dxf(
-            payload["curves"], payload["landxml_source"], payload.get("coordinate_config", {})
+            payload["curves"], payload["landxml_source"]
         ),
     }
     try:

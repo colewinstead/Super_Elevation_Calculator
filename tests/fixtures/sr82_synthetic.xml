@@ -4,6 +4,7 @@
     <Imperial areaUnit="squareFoot" linearUnit="USSurveyFoot" volumeUnit="cubicYard" temperatureUnit="fahrenheit" pressureUnit="inHG" directionUnit="radians" />
   </Units>
   <Application name="Synthetic Test Fixture" version="1.0" manufacturer="Test Data" />
+  <CoordinateSystem name="MDOT-MS83/2011-EF" epsgCode="6507" horizontalDatum="NAD83(2011)" horizontalCoordinateSystemName="MS83/2011-EF" desc="NAD83(2011) / Mississippi East (ftUS)" />
   <CgPoints />
   <Alignments>
     <Alignment name="SR 82" length="17980.010636362913" state="proposed" staStart="10000">
