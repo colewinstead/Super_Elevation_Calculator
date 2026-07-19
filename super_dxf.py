@@ -40,7 +40,7 @@ DEFAULT_CONFIG = {
         "overlay_text": "ALI_DESIGN_ML_LABELS_TX",
     },
     "overlay_layer_styles": {
-        "ALI_DESIGN_ML_CURVES": {"color": 55, "linetype": "CONTINUOUS", "lineweight": 40},
+        "ALI_DESIGN_ML_CURVES": {"color": 8, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS": {"color": 10, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_STA": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS_TX": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
@@ -471,7 +471,11 @@ def _overlay_station_label(row: dict, curve: dict) -> str:
     return label
 
 
-def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_landxml.LandXMLData, config: dict | None = None) -> list[str]:
+def build_overlay_drawing(
+    curves: Iterable[dict],
+    landxml: super_landxml.LandXMLData,
+    config: dict | None = None,
+) -> tuple[DxfWriter, dict, list[str]]:
     cfg = _cfg(config)
     writer = DxfWriter()
     warnings = list(landxml.warnings)
@@ -603,10 +607,15 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
     for warning in warnings:
         if warning not in unique_warnings:
             unique_warnings.append(warning)
+    return writer, cfg, unique_warnings
+
+
+def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_landxml.LandXMLData, config: dict | None = None) -> list[str]:
+    writer, cfg, warnings = build_overlay_drawing(curves, landxml, config)
     writer.save(
         path,
         dxf_insunits(landxml.linear_unit),
         cfg.get("overlay_layer_styles"),
         cfg.get("overlay_text_styles"),
     )
-    return unique_warnings
+    return warnings

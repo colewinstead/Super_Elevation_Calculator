@@ -1,5 +1,7 @@
 import csv
+import hashlib
 import io
+import json
 import math
 import tempfile
 import unittest
@@ -12,6 +14,7 @@ import super_batch
 import super_dxf
 import super_exports
 import super_landxml
+import super_service
 
 
 LANDXML_FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "sr82_synthetic.xml"
@@ -74,6 +77,35 @@ def _parse_dxf_entities(text: str) -> list[dict]:
 
 
 class SuperExportTests(unittest.TestCase):
+    def overlay_record_digest(self) -> tuple[int, str]:
+        content = LANDXML_FIXTURE.read_text(encoding="utf-8")
+        data = super_landxml.parse_landxml_text(content, LANDXML_FIXTURE.name)
+        curves = super_service.build_all_landxml_curves(
+            content,
+            LANDXML_FIXTURE.name,
+            {
+                "speed": "45",
+                "facility": "centerline",
+                "area": "rural",
+                "lane_width": "12",
+                "lanes_rotated": "2",
+                "normal_crown": "0.02",
+            },
+        )
+        captured = {}
+        original = super_dxf.DxfWriter.save
+
+        def capture(writer, *_args, **_kwargs):
+            captured["records"] = list(writer._records)
+
+        super_dxf.DxfWriter.save = capture
+        try:
+            super_dxf.export_overlay_dxf("unused.dxf", curves, data)
+        finally:
+            super_dxf.DxfWriter.save = original
+        encoded = json.dumps(captured["records"], separators=(",", ":")).encode("utf-8")
+        return len(captured["records"]), hashlib.sha256(encoded).hexdigest()
+
     def sample_results(self):
         return Super.calculate_superelevation(
             "10+00",
@@ -377,6 +409,18 @@ class SuperExportTests(unittest.TestCase):
         self.assertEqual(float(alignment_line["11"]), first_line.end[0])
         self.assertEqual(float(alignment_line["21"]), first_line.end[1])
 
+    def test_overlay_entity_sequence_is_preserved(self):
+        self.assertEqual(
+            self.overlay_record_digest(),
+            (202, "a1c717d252b5e235ca3f01f53646a536d2c24811c08f17e4f2822e0c99a4e165"),
+        )
+
+    def test_overlay_alignment_layer_uses_gray_aci(self):
+        self.assertEqual(
+            super_dxf.DEFAULT_CONFIG["overlay_layer_styles"]["ALI_DESIGN_ML_CURVES"]["color"],
+            8,
+        )
+
     def test_detail_dxf_contains_curve_labels(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "detail.dxf"
@@ -413,7 +457,7 @@ class SuperExportTests(unittest.TestCase):
             document = ezdxf.readfile(path)
 
         expected = {
-            "ALI_DESIGN_ML_CURVES": (55, 40),
+            "ALI_DESIGN_ML_CURVES": (8, 40),
             "ALI_DESIGN_ML_LABELS": (10, 40),
             "ALI_DESIGN_ML_STA": (7, 40),
             "ALI_DESIGN_ML_LABELS_TX": (7, 40),
