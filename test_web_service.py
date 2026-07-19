@@ -6,12 +6,19 @@ from pathlib import Path
 
 import super_project
 import super_service
+from commercial_entitlements import LocalDevelopmentEntitlementProvider, Plan
 
 
 FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "sr82_synthetic.xml"
 
 
 class WebServiceTests(unittest.TestCase):
+    def pro_payload(self, payload: dict) -> dict:
+        return {
+            **payload,
+            "entitlement": LocalDevelopmentEntitlementProvider(Plan.PRO).snapshot().as_dict(),
+        }
+
     def inputs(self) -> dict:
         return {
             "pc": "10+00",
@@ -69,7 +76,7 @@ class WebServiceTests(unittest.TestCase):
             })
 
     def test_safe_dispatch_returns_friendly_project_error_without_traceback(self):
-        response = super_service.dispatch_safe("project_load", json.dumps({"content": ""}))
+        response = super_service.dispatch_safe("project_load", json.dumps(self.pro_payload({"content": ""})))
         self.assertFalse(response["ok"])
         self.assertEqual(response["error"]["type"], "ProjectFormatError")
         self.assertIn("not valid JSON", response["error"]["message"])
@@ -99,7 +106,10 @@ class WebServiceTests(unittest.TestCase):
         diagram = super_service.dispatch("curve_diagram", json.dumps({
             "results": curves[0]["results"], "direction": curves[0]["meta"]["curve_direction"],
         }))
-        qa = super_service.dispatch("corridor_qa", json.dumps({"content": content, "filename": FIXTURE.name, "curves": curves}))
+        qa = super_service.dispatch(
+            "corridor_qa",
+            json.dumps(self.pro_payload({"content": content, "filename": FIXTURE.name, "curves": curves})),
+        )
         self.assertTrue(diagram["profiles"]["left"])
         self.assertEqual(qa["status"], "pass")
 

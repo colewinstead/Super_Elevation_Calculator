@@ -26,17 +26,17 @@ export async function generateMetadata(): Promise<Metadata> {
       default: "Superelevation Calculator | Roadway Design Toolkit",
       template: "%s | Superelevation Calculator",
     },
-    description: "Roadway superelevation calculations, LandXML review, and CAD-ready PDF, ORD CSV, and DXF exports for Windows, macOS, and the browser.",
+    description: "Browser-first roadway superelevation calculations with local project processing, Free manual curves, and planned Pro engineering workflows.",
     openGraph: {
       type: "website",
       title: "Superelevation Calculator",
-      description: "From roadway curve to CAD-ready deliverable.",
+      description: "Professional superelevation, local by design.",
       images: [{ url: new URL("/og.png", origin).toString(), width: 1200, height: 630, alt: "Superelevation Calculator roadway design toolkit" }],
     },
     twitter: {
       card: "summary_large_image",
       title: "Superelevation Calculator",
-      description: "From roadway curve to CAD-ready deliverable.",
+      description: "Professional superelevation, local by design.",
       images: [new URL("/og.png", origin).toString()],
     },
   };

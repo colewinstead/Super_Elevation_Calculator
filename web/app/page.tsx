@@ -1,5 +1,8 @@
 import DownloadCards from "./DownloadCards";
 import OutputShowcase from "./OutputShowcase";
+import commercialManifest from "./generated/commercial-manifest.json";
+import criteriaProfiles from "./generated/criteria-profiles.json";
+import { PRO_PRICE } from "@/lib/billing/legal";
 
 const GITHUB_REPOSITORY = "https://github.com/colewinstead/Super_Elevation_Calculator";
 
@@ -46,8 +49,10 @@ export default function Home() {
         </a>
         <div className="site-nav-links">
           <a href="#features">Features</a>
+          <a href="#standards">DOTs supported</a>
+          <a href="#plans">Plans</a>
           <a href="#workflow">Workflow</a>
-          <a href="#downloads">Downloads</a>
+          <a href="/account">Account</a>
           <a href={`${GITHUB_REPOSITORY}/releases/latest`}>Release notes</a>
         </div>
         <a className="nav-cta" href="/calculator">Open calculator <span>↗</span></a>
@@ -55,16 +60,16 @@ export default function Home() {
 
       <section className="hero" id="top">
         <div className="hero-copy">
-          <p className="marketing-eyebrow"><span /> Roadway design toolkit</p>
-          <h1>From roadway curve<br />to <em>CAD-ready</em> deliverable.</h1>
-          <p className="hero-lede">Superelevation calculations, LandXML review, station-aware lane profiles, and engineering exports—built for the way roadway designers actually work.</p>
+          <p className="marketing-eyebrow"><span /> Browser-first roadway design</p>
+          <h1>Professional superelevation,<br /><em>local by design.</em></h1>
+          <p className="hero-lede">Start with a useful manual curve calculation for free. Add LandXML corridors, multi-curve projects, and engineering exports with Pro—all without uploading project files.</p>
           <div className="hero-actions">
-            <a className="marketing-button primary-action" href="/calculator">Run in your browser <span>↗</span></a>
-            <a className="marketing-button secondary-action" href="#downloads">Download desktop app <span>↓</span></a>
+            <a className="marketing-button primary-action" href="/calculator">Calculate free <span>↗</span></a>
+            <a className="marketing-button secondary-action" href="#plans">Compare plans <span>↓</span></a>
           </div>
           <div className="hero-trust" aria-label="Product benefits">
             <span><i /> No account</span>
-            <span><i /> Local processing</span>
+            <span><i /> Files stay local</span>
             <span><i /> Shared Python engine</span>
           </div>
         </div>
@@ -73,11 +78,11 @@ export default function Home() {
       </section>
 
       <section className="signal-strip" aria-label="Product capabilities">
-        <div><span>INPUT</span><strong>LandXML + curve data</strong></div>
+        <div><span>FREE</span><strong>Manual curve calculation</strong></div>
         <i>→</i>
-        <div><span>CALCULATE</span><strong>Transitions + lane slopes</strong></div>
+        <div><span>PRO</span><strong>LandXML + project workflows</strong></div>
         <i>→</i>
-        <div><span>DELIVER</span><strong>PDF · ORD CSV · DXF</strong></div>
+        <div><span>LOCAL</span><strong>PDF · ORD CSV · DXF</strong></div>
       </section>
 
       <section className="product-story" id="workflow">
@@ -117,6 +122,26 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="standards-section" id="standards">
+        <div className="section-intro">
+          <p className="marketing-eyebrow"><span /> DOTs supported</p>
+          <h2>Versioned criteria profiles with visible source revisions.</h2>
+          <p>Every available profile records its governing authority and source revision. The responsible project PE must independently confirm applicability and current requirements.</p>
+        </div>
+        <div className="standards-grid">
+          {criteriaProfiles.map((profile) => {
+            const abbreviation = profile.profile_id.startsWith("mdot") ? "MDOT" : "TDOT";
+            const plan = profile.profile_id === commercialManifest.free_criteria_profile ? "Free" : "Pro";
+            return <article key={profile.profile_id}>
+              <div><span className="dot-mark">{abbreviation}</span><span className={`plan-badge ${plan.toLowerCase()}`}>{plan}</span></div>
+              <h3>{profile.governing_authority}</h3>
+              <p>{profile.profile_name}</p>
+              <dl><dt>Recorded revision</dt><dd>{profile.revision}</dd><dt>Use requirement</dt><dd>Independent project PE verification</dd></dl>
+            </article>;
+          })}
+        </div>
+      </section>
+
       <section className="export-section">
         <div>
           <p className="marketing-eyebrow"><span /> Deliverables</p>
@@ -136,29 +161,57 @@ export default function Home() {
         <a href="/calculator">Open private browser workspace <span>↗</span></a>
       </section>
 
+      <section className="plans-section" id="plans">
+        <div className="section-intro centered">
+          <p className="marketing-eyebrow"><span /> Free and Pro</p>
+          <h2>One calculator. A useful Free tier and professional Pro workflows.</h2>
+          <p>Free preserves engineering correctness. Pro adds professional workflows, scale, support, and exports—not different calculations.</p>
+        </div>
+        <div className="plan-cards">
+          <article><span>FREE</span><h3>Manual calculation</h3><p>No account required</p><strong>Available now</strong><a href="/calculator">Calculate free ↗</a></article>
+          <article className="featured"><span>PRO</span><h3>Professional workflow</h3><p>Local files, projects, and exports</p><strong>{PRO_PRICE.display}</strong><a href="/account">Start Pro →</a></article>
+          <article><span>TEAM</span><h3>Named-user licensing</h3><p>Pro capabilities with seat administration</p><strong>Custom pilot</strong><a href="#pilot">Book a pilot ↓</a></article>
+        </div>
+        <div className="comparison-wrap">
+          <table className="comparison-table">
+            <caption>Free, Pro, and Team capability comparison</caption>
+            <thead><tr><th>Capability</th><th>Free</th><th>Pro</th><th>Team</th></tr></thead>
+            <tbody>
+              <tr><th>Manual MDOT single curve, results, and lane diagram</th><td>Included</td><td>Included</td><td>Included</td></tr>
+              <tr><th>Source revisions and calculation provenance on screen</th><td>Included</td><td>Included</td><td>Included</td></tr>
+              <tr><th>LandXML, multi-curve projects, and all supported DOT profiles</th><td>—</td><td>Included</td><td>Included</td></tr>
+              <tr><th>Project files, PDF, ORD CSV, and overlay DXF</th><td>—</td><td>Included</td><td>Included</td></tr>
+              <tr><th>Priority support</th><td>—</td><td>Included</td><td>Included</td></tr>
+              <tr><th>Desktop edition</th><td>Coming soon</td><td>Coming soon</td><td>Coming soon</td></tr>
+              <tr><th>Named-user seat administration</th><td>—</td><td>—</td><td>Included</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="pilot-section" id="pilot">
+        <div><p className="marketing-eyebrow"><span /> Team program</p><h2>Book a Team pilot.</h2><p>Team pilots add named-seat administration and guided onboarding. Pro subscribers can start individually through secure Stripe Checkout.</p></div>
+        <div className="pilot-status"><span>LOCAL DATA PROMISE</span><strong>No engineering-file uploads</strong><p>Accounts and billing verify identity and access only. Project files and calculations continue to stay on the customer’s device.</p></div>
+      </section>
+
       <section className="download-section" id="downloads">
         <div className="section-intro centered">
-          <p className="marketing-eyebrow"><span /> Choose your workspace</p>
-          <h2>Desktop when you want it.<br />Browser when you don’t.</h2>
-          <p>Download the portable desktop application or start immediately in your browser.</p>
+          <p className="marketing-eyebrow"><span /> Optional offline edition</p>
+          <h2>Browser first.<br />Desktop when offline work requires it.</h2>
+          <p>Desktop editions are coming soon.</p>
         </div>
         <DownloadCards />
-        <div className="download-links">
-          <a href={`${GITHUB_REPOSITORY}/releases/latest`}>Release notes ↗</a>
-          <a href={`${GITHUB_REPOSITORY}/releases/latest`}>Checksums ↗</a>
-          <a href={GITHUB_REPOSITORY}>Source code ↗</a>
-        </div>
       </section>
 
       <section className="engineering-note">
         <span>ENGINEERING AID</span>
-        <p>Validate criteria, stationing, coordinate systems, lane naming, and exported geometry against governing standards and the project design file.</p>
+        <p>The licensed professional responsible for the project must independently verify criteria, inputs, stationing, coordinate systems, results, and deliverables against governing standards and project requirements.</p>
       </section>
 
       <footer className="marketing-footer">
         <a className="site-brand" href="#top"><span className="site-brand-mark">SE</span><span><strong>Superelevation</strong><small>Calculator</small></span></a>
         <p>Roadway calculations and CAD-ready exports.<br />Built for traceable engineering workflows.</p>
-        <div><a href="/calculator">Browser app</a><a href="#downloads">Downloads</a><a href={GITHUB_REPOSITORY}>GitHub</a></div>
+        <div><a href="/calculator">Browser app</a><a href="/account">Account</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href={GITHUB_REPOSITORY}>GitHub</a></div>
       </footer>
     </main>
   );

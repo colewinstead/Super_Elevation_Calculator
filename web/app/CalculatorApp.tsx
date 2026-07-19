@@ -4,7 +4,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @next/next/no-html-link-for-pages */
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  allows,
+  CAPABILITIES,
+  CommercialPlan,
+  EMPTY_FREE_ENTITLEMENT,
+  EntitlementSnapshot,
+  hasLocalEntitlementOverride,
+  isLocalEntitlementDevelopment,
+  LocalDevelopmentEntitlementProvider,
+  localSnapshot,
+  RemoteEntitlementProvider,
+} from "./entitlements";
 import SuperelevationAnalysis from "./SuperelevationAnalysis";
+import UpgradeNotice from "./UpgradeNotice";
 
 type Dict = Record<string, any>;
 type RuntimeState = "loading" | "ready" | "error";
@@ -91,6 +104,7 @@ function cleanName(value: string, fallback: string) {
 
 export default function CalculatorApp() {
   const workerRef = useRef<Worker | null>(null);
+  const entitlementProviderRef = useRef<{ refresh(): Promise<EntitlementSnapshot> } | null>(null);
   const pendingRef = useRef(new Map<number, { resolve: (value: any) => void; reject: (reason: Error) => void }>());
   const requestId = useRef(0);
   const calculationSequence = useRef(0);
@@ -98,6 +112,9 @@ export default function CalculatorApp() {
   const [runtimeMessage, setRuntimeMessage] = useState("Starting private browser workspace…");
   const [progress, setProgress] = useState(4);
   const [manifest, setManifest] = useState<Dict | null>(null);
+  const [entitlement, setEntitlement] = useState<EntitlementSnapshot>(EMPTY_FREE_ENTITLEMENT);
+  const [upgradeFeature, setUpgradeFeature] = useState("");
+  const [localDevelopment, setLocalDevelopment] = useState(false);
   const [inputs, setInputs] = useState<Dict>(INITIAL_INPUTS);
   const [calculation, setCalculation] = useState<Dict | null>(null);
   const [curves, setCurves] = useState<Dict[]>([]);
@@ -134,6 +151,14 @@ export default function CalculatorApp() {
       } else if (message.type === "ready") {
         setRuntime("ready");
         setManifest(message.manifest);
+        if (message.manifest?.commercial) {
+          const provider = hasLocalEntitlementOverride()
+            ? new LocalDevelopmentEntitlementProvider(message.manifest.commercial)
+            : new RemoteEntitlementProvider(message.manifest.commercial);
+          entitlementProviderRef.current = provider;
+          provider.getSnapshot().then(setEntitlement);
+          setLocalDevelopment(isLocalEntitlementDevelopment());
+        }
       } else if (message.type === "fatal") {
         setRuntime("error");
         setRuntimeMessage(message.message);
@@ -164,14 +189,33 @@ export default function CalculatorApp() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
+  useEffect(() => {
+    const refresh = () => entitlementProviderRef.current?.refresh().then(setEntitlement);
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+
   const call = useCallback((operation: string, payload: Dict = {}) => {
     if (!workerRef.current || runtime !== "ready") return Promise.reject(new Error("The browser workspace is not ready yet."));
     const id = ++requestId.current;
     return new Promise<any>((resolve, reject) => {
       pendingRef.current.set(id, { resolve, reject });
-      workerRef.current!.postMessage({ id, operation, payload });
+      workerRef.current!.postMessage({ id, operation, payload: { ...payload, entitlement } });
     });
-  }, [runtime]);
+  }, [runtime, entitlement]);
+
+  const requestCapability = useCallback((capability: string) => {
+    if (allows(entitlement, capability)) return true;
+    setUpgradeFeature(manifest?.commercial?.capabilities?.[capability]?.name || "This feature");
+    return false;
+  }, [entitlement, manifest]);
+
+  const changeDevelopmentEntitlement = (plan: CommercialPlan) => {
+    if (!manifest?.commercial) return;
+    entitlementProviderRef.current = new LocalDevelopmentEntitlementProvider(manifest.commercial, plan);
+    setEntitlement(localSnapshot(manifest.commercial, plan));
+    setNotice(`Local development entitlement changed to ${plan.toUpperCase()}.`);
+  };
 
   const update = (key: string, value: any) => {
     setInputs((current) => ({ ...current, [key]: value }));
@@ -179,6 +223,7 @@ export default function CalculatorApp() {
   };
 
   const updateCriteriaProfile = (profileId: string) => {
+    if (!profileId.startsWith("mdot") && !requestCapability(CAPABILITIES.allDotProfiles)) return;
     const tdot = profileId.startsWith("tdot");
     setInputs((current) => ({
       ...current,
@@ -250,6 +295,7 @@ export default function CalculatorApp() {
 
   useEffect(() => {
     if (runtime !== "ready") return;
+    if (!String(inputs.criteria_profile || "").startsWith("mdot") && !allows(entitlement, CAPABILITIES.allDotProfiles)) return;
     const readyToCalculate = String(inputs.pc ?? "").trim()
       && String(inputs.speed ?? "").trim()
       && String(inputs.radius ?? "").trim();
@@ -280,7 +326,7 @@ export default function CalculatorApp() {
     return () => window.clearTimeout(timer);
     // calculationKey intentionally captures only values that affect calculation output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calculationKey, calculationRequest, runtime, call]);
+  }, [calculationKey, calculationRequest, runtime, call, entitlement]);
 
   const diagramCurves = useMemo(() => {
     if (!curves.length) return calculation?.results ? [{ results: calculation.results, meta }] : [];
@@ -304,7 +350,7 @@ export default function CalculatorApp() {
   }, [diagramCurves, runtime, call]);
 
   useEffect(() => {
-    if (!landxml || runtime !== "ready") {
+    if (!landxml || runtime !== "ready" || !allows(entitlement, CAPABILITIES.landxml)) {
       setCorridorQa(null);
       return;
     }
@@ -313,10 +359,10 @@ export default function CalculatorApp() {
       .then((value) => { if (active) setCorridorQa(value); })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { active = false; };
-  }, [landxml, curves, excludedCurveIndexes, runtime, call]);
+  }, [landxml, curves, excludedCurveIndexes, runtime, call, entitlement]);
 
   useEffect(() => {
-    if (!landxml || runtime !== "ready") {
+    if (!landxml || runtime !== "ready" || !allows(entitlement, CAPABILITIES.landxml)) {
       setPlanView(null);
       return;
     }
@@ -325,7 +371,7 @@ export default function CalculatorApp() {
       .then((value) => { if (active) setPlanView(value); })
       .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { active = false; };
-  }, [landxml, diagramCurves, runtime, call]);
+  }, [landxml, diagramCurves, runtime, call, entitlement]);
 
   const applyPreset = (index: number, parsed = landxml) => {
     const preset = parsed?.curve_presets?.[index];
@@ -349,6 +395,10 @@ export default function CalculatorApp() {
   };
 
   const selectLandxml = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!requestCapability(CAPABILITIES.landxml)) {
+      event.target.value = "";
+      return;
+    }
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -373,6 +423,7 @@ export default function CalculatorApp() {
   };
 
   const addCurve = () => {
+    if (!requestCapability(CAPABILITIES.multiCurve)) return;
     const curve = curveObject();
     if (!curve) return setError("Run a calculation before adding a curve.");
     setCurves((current) => [...current, curve]);
@@ -382,6 +433,7 @@ export default function CalculatorApp() {
   };
 
   const updateCurve = () => {
+    if (!requestCapability(CAPABILITIES.multiCurve)) return;
     const curve = curveObject();
     if (!curve || selectedCurve < 0) return setError("Select a curve and run a calculation before updating it.");
     setCurves((current) => current.map((item, index) => index === selectedCurve ? curve : item));
@@ -443,6 +495,7 @@ export default function CalculatorApp() {
   };
 
   const addAll = async () => {
+    if (!requestCapability(CAPABILITIES.multiCurve)) return;
     if (!landxml) return setError("Select LandXML first.");
     const result = await run("Building all curves", () => call("build_all_landxml_curves", {
       content: landxml.source.content,
@@ -462,6 +515,7 @@ export default function CalculatorApp() {
   const exportCurves = () => curves.length ? curves : (curveObject() ? [curveObject()!] : []);
 
   const saveProject = async () => {
+    if (!requestCapability(CAPABILITIES.projectFiles)) return;
     const filename = `${cleanName(inputs.project_name, "superelevation-project")}.json`;
     let target: SaveTarget | null;
     try {
@@ -492,6 +546,10 @@ export default function CalculatorApp() {
   };
 
   const loadProject = async (event: ChangeEvent<HTMLInputElement>) => {
+    if (!requestCapability(CAPABILITIES.projectFiles)) {
+      event.target.value = "";
+      return;
+    }
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
@@ -544,6 +602,30 @@ export default function CalculatorApp() {
     setNotice(`Opened ${file.name}${loaded.landxml ? " with embedded LandXML" : ""}.`);
   };
 
+  const loadSampleCalculation = () => {
+    if (dirty && !window.confirm("Replace the current unsaved workspace with the synthetic sample calculation?")) return;
+    setInputs({
+      ...INITIAL_INPUTS,
+      project_name: "Synthetic free sample",
+      route_name: "Training example",
+      alignment_name: "Manual alignment",
+      curve_name: "45 mph rural curve",
+      pc: "100+00",
+      speed: "45",
+      radius: "2000",
+    });
+    setCalculation(null);
+    setCurves([]);
+    setLandxml(null);
+    setLandxmlPreset(0);
+    setSelectedCurve(-1);
+    setExcludedCurveIndexes([]);
+    setLookupResult(null);
+    setError("");
+    setNotice("Loaded a synthetic manual example. Review every input before use.");
+    setDirty(true);
+  };
+
   const newProject = () => {
     if (dirty && !window.confirm("Discard the unsaved working project?")) return;
     setInputs(INITIAL_INPUTS); setCalculation(null); setCurves([]); setLandxml(null); setLandxmlPreset(0); setSelectedCurve(-1); setExcludedCurveIndexes([]);
@@ -577,6 +659,12 @@ export default function CalculatorApp() {
   };
 
   const performExport = async (operation: string, extension: string, mime: string) => {
+    const capability = operation === "export_pdf"
+      ? CAPABILITIES.pdfReports
+      : operation === "export_ord_csv"
+        ? CAPABILITIES.ordCsv
+        : CAPABILITIES.overlayDxf;
+    if (!requestCapability(capability)) return;
     const available = exportCurves();
     if (!available.length) return setError("Run a calculation before exporting.");
     const payload: Dict = { curves: available };
@@ -641,9 +729,12 @@ export default function CalculatorApp() {
       <header className="topbar">
         <div className="brand-mark">SE</div>
         <div><p className="eyebrow">Civil design workspace</p><h1>Superelevation Calculator</h1></div>
-        <a className="workspace-home" href="/">Product home</a>
+        <a className="workspace-home" href="/">Product home</a><a className="workspace-home" href="/account" target="_blank" rel="noreferrer">{entitlement.plan === "free" ? "Account" : `${entitlement.plan.toUpperCase()} account`}</a>
+        {localDevelopment && <label className="development-entitlement"><span>Local test plan</span><select value={entitlement.plan} onChange={(event) => changeDevelopmentEntitlement(event.target.value as CommercialPlan)}><option value="free">Free</option><option value="pro">Pro</option><option value="team">Team</option></select></label>}
         <div className={`runtime ${runtime}`}><span></span>{runtime === "ready" ? "Private browser engine ready" : runtimeMessage}</div>
       </header>
+
+      {upgradeFeature && <UpgradeNotice feature={upgradeFeature} onClose={() => setUpgradeFeature("")} />}
 
       {runtime !== "ready" && <section className="runtime-gate" role="status">
         <div className="gate-card"><p className="eyebrow">Browser-only processing</p><h2>{runtime === "error" ? "The workspace could not start" : runtimeMessage}</h2>
@@ -660,17 +751,18 @@ export default function CalculatorApp() {
       <div className="workspace">
         <aside className="panel project-panel">
           <div className="panel-heading"><div><p className="step">01</p><h2>Project</h2></div>{dirty && <span className="dirty">Unsaved</span>}</div>
-          <div className="button-grid"><button onClick={newProject}>New</button><label className="button">Open<input type="file" accept=".json,application/json" onChange={loadProject} /></label><button onClick={saveProject} disabled={runtime !== "ready"}>Save</button></div>
+          <div className="button-grid"><button onClick={newProject}>New</button>{allows(entitlement, CAPABILITIES.projectFiles) ? <label className="button">Open<input type="file" accept=".json,application/json" onChange={loadProject} /></label> : <button onClick={() => requestCapability(CAPABILITIES.projectFiles)}>Open <span className="pro-chip">Pro</span></button>}<button onClick={saveProject} disabled={runtime !== "ready"}>Save <span className="pro-chip">Pro</span></button></div>
+          <button className="sample-button" onClick={loadSampleCalculation}>Load synthetic sample <span>Free</span></button>
           {input("project_name", "Project name")}{input("route_name", "Route name")}
           <div className="source-card">
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
-            <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label>
+            {allows(entitlement, CAPABILITIES.landxml) ? <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label> : <button className="button accent" onClick={() => requestCapability(CAPABILITIES.landxml)}>Select LandXML <span className="pro-chip">Pro</span></button>}
             {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · {excludedCurveIndexes.length} excluded from QA · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
           </div>
           <div className="curve-list"><div className="list-title"><h3>Calculated curves</h3><span>{curves.length}</span></div>
             {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <button key={index} className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>)}
           </div>
-          <div className="button-grid"><button onClick={addCurve}>Add</button><button onClick={updateCurve}>Update</button><button onClick={removeCurve}>Remove</button></div>
+          <div className="button-grid"><button onClick={addCurve}>Add <span className="pro-chip">Pro</span></button><button onClick={updateCurve}>Update <span className="pro-chip">Pro</span></button><button onClick={removeCurve}>Remove</button></div>
         </aside>
 
         <section className="panel inputs-panel">
@@ -681,7 +773,7 @@ export default function CalculatorApp() {
             else { setLandxmlPreset(-1); setCalculation(null); setDiagramInspector(null); }
           }}><option value={-1}>No LandXML curve selected</option>{landxml?.curve_presets?.map((preset: Dict, index: number) => <option value={index} key={index}>{preset.curve_name} · {preset.curve_direction} · R {preset.radius_ft}{excludedCurveIndexes.includes(index) ? " · excluded from QA" : ""}</option>)}</select></label>}
           <div className="form-grid">{input("alignment_name", "Alignment name")}{input("curve_name", "Curve name")}
-            <label className="field full"><span>Governing standard</span><select value={activeProfileId} onChange={(e) => updateCriteriaProfile(e.target.value)}>{manifest?.criteria_profiles?.map((profile: Dict) => <option value={profile.profile_id} key={profile.profile_id}>{profile.governing_authority} · {profile.revision}</option>)}</select><small>{activeProfile?.profile_name}</small></label>
+            <label className="field full"><span>Governing standard</span><select value={activeProfileId} onChange={(e) => updateCriteriaProfile(e.target.value)}>{manifest?.criteria_profiles?.map((profile: Dict) => <option value={profile.profile_id} key={profile.profile_id}>{profile.governing_authority} · {profile.revision}{profile.profile_id.startsWith("tdot") ? " · Pro" : ""}</option>)}</select><small>{activeProfile?.profile_name}</small></label>
             <label className="field"><span>Curve direction</span><select value={inputs.curve_direction} onChange={(e) => update("curve_direction", e.target.value)}><option value="left">Left</option><option value="right">Right</option></select></label>
             {input("pc", "PC station", true)}{input("pt", "PT station")}
             <label className="field"><span>Design speed <b>*</b></span><select value={inputs.speed} onChange={(e) => update("speed", e.target.value)}><option value="">Select mph</option>{speedOptions.map((speed: string) => <option key={speed}>{speed}</option>)}</select></label>
@@ -717,9 +809,9 @@ export default function CalculatorApp() {
         </section>
       </div>
 
-      <section className="exports panel"><div><p className="step">04</p><h2>Review & export</h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-status"><span>Overlay coordinates</span><strong>{landxml?.summary?.coordinate_system?.display_name || "Select LandXML to detect"}</strong><small>DXF preserves the LandXML XY coordinates without reprojection.</small></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF</button></div></section>
+      <section className="exports panel"><div><p className="step">04</p><h2>Review & export <span className="pro-chip">Pro</span></h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-status"><span>Overlay coordinates</span><strong>{landxml?.summary?.coordinate_system?.display_name || "Select LandXML to detect"}</strong><small>DXF preserves the LandXML XY coordinates without reprojection.</small></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report <span className="pro-chip">Pro</span></button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV <span className="pro-chip">Pro</span></button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF <span className="pro-chip">Pro</span></button></div></section>
 
-      <footer><p><strong>Engineering aid.</strong> Validate criteria, stationing, coordinate systems, lane naming, and exported geometry against governing standards and the project design file.</p><p>No account · No upload · Browser-only processing</p></footer>
+      <footer><p><strong>Engineering aid.</strong> The licensed professional responsible for the project must independently verify criteria, inputs, stationing, coordinate systems, results, and deliverables against governing standards and project requirements.</p><p>Free without account · Local files · Browser processing</p></footer>
     </main>
   );
 }

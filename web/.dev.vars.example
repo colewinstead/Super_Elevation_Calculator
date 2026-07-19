@@ -1,0 +1,8 @@
+# Local Stripe test values only. Copy to .dev.vars; never commit the real file.
+STRIPE_SECRET_KEY=replace_with_test_secret
+STRIPE_WEBHOOK_SECRET=replace_with_webhook_secret
+STRIPE_PRO_PRICE_ID=price_replace_me
+ENTITLEMENT_SIGNING_PRIVATE_JWK={"kty":"OKP","crv":"Ed25519","d":"replace_me","x":"must_match_committed_public_key"}
+
+# Live Stripe keys remain locked unless this is explicitly true in hosted secrets.
+ALLOW_LIVE_PAYMENTS=false

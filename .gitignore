@@ -21,6 +21,7 @@ dist/
 web/node_modules/
 web/.next/
 web/.wrangler/
+web/.dev.vars
 web/public/python/
 !web/build/
 !web/build/**

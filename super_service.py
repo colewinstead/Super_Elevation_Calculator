@@ -11,6 +11,14 @@ from typing import Any, Callable
 
 import Super
 from app_info import APP_NAME, APP_VERSION, CALCULATION_ENGINE_VERSION
+from commercial_entitlements import (
+    Capability,
+    LocalDevelopmentEntitlementProvider,
+    commercial_manifest,
+    require_capability,
+    require_profile_access,
+    snapshot_from_payload,
+)
 from criteria_info import MDOT_PROFILE_ID, criteria_metadata, criteria_profiles, normalize_profile_id
 import super_batch
 import super_dxf
@@ -40,6 +48,7 @@ def application_manifest() -> dict[str, Any]:
         "application_version": APP_VERSION,
         "calculation_engine_version": CALCULATION_ENGINE_VERSION,
         "project_schema_version": super_project.PROJECT_VERSION,
+        "commercial": commercial_manifest(),
         "criteria": criteria_metadata(),
         "criteria_profiles": criteria_profiles(),
         "defaults": dict(DEFAULT_INPUTS),
@@ -64,6 +73,20 @@ def application_manifest() -> dict[str, Any]:
             },
         },
     }
+
+
+_OPERATION_CAPABILITIES = {
+    "parse_landxml": Capability.LANDXML_WORKFLOWS,
+    "build_all_landxml_curves": Capability.MULTI_CURVE_PROJECTS,
+    "corridor_qa": Capability.LANDXML_WORKFLOWS,
+    "plan_view": Capability.LANDXML_WORKFLOWS,
+    "project_load": Capability.PROJECT_FILES,
+    "project_save": Capability.PROJECT_FILES,
+    "export_ord_csv": Capability.ORD_CSV_EXPORT,
+    "export_pdf": Capability.PDF_REPORTS,
+    "export_detail_dxf": Capability.OVERLAY_DXF_EXPORT,
+    "export_overlay_dxf": Capability.OVERLAY_DXF_EXPORT,
+}
 
 
 def _station_equations(value: Any) -> list[dict]:
@@ -143,6 +166,14 @@ def calculate_curve(inputs: dict[str, Any]) -> dict[str, Any]:
         "formatted_results": Super.format_results(results, station_format),
         "lanes": {"left": left_rows, "right": right_rows},
     }
+
+
+def calculate_with_entitlement(inputs: dict[str, Any], entitlement: Any = None) -> dict[str, Any]:
+    """Authorize the requested profile, then call the unchanged calculation service."""
+    values = {**DEFAULT_INPUTS, **(inputs or {})}
+    profile_id = normalize_profile_id(str(values.get("criteria_profile", MDOT_PROFILE_ID)))
+    require_profile_access(snapshot_from_payload(entitlement), profile_id)
+    return calculate_curve(inputs)
 
 
 def present_results(results: dict, direction: str = "left", station_format: bool = True) -> dict[str, Any]:
@@ -352,9 +383,18 @@ def export_overlay_dxf(curves: list[dict], landxml_source: dict[str, str]) -> di
 def dispatch(operation: str, payload_json: str = "{}") -> Any:
     """Stable JSON bridge invoked by the Pyodide worker."""
     payload = json.loads(payload_json or "{}")
+    entitlement = snapshot_from_payload(payload.get("entitlement"))
+    required_capability = _OPERATION_CAPABILITIES.get(operation)
+    if required_capability is not None:
+        require_capability(entitlement, required_capability)
     operations: dict[str, Callable[..., Any]] = {
         "manifest": lambda: application_manifest(),
-        "calculate": lambda: calculate_curve(payload.get("inputs", payload)),
+        "entitlement_snapshot": lambda: LocalDevelopmentEntitlementProvider(
+            payload.get("plan", "free"), payload.get("status", "active")
+        ).snapshot().as_dict(),
+        "calculate": lambda: calculate_with_entitlement(
+            payload.get("inputs", payload), payload.get("entitlement")
+        ),
         "present_results": lambda: present_results(
             payload["results"], payload.get("direction", "left"), bool(payload.get("station_format", True))
         ),

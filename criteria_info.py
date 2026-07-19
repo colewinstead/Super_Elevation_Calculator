@@ -15,8 +15,8 @@ _MDOT_CRITERIA_METADATA = {
     "profile_name": "MDOT superelevation criteria",
     "revision": "2020 manual / standard drawings compilation revised 2026-04-22",
     "source_status": (
-        "ISSUED SOURCES IDENTIFIED; VALUE-BY-VALUE VERIFICATION AND ENGINEER APPROVAL REQUIRED "
-        "BEFORE PAID PILOT"
+        "ISSUED SOURCES RECORDED; RESPONSIBLE PROJECT PE MUST VERIFY APPLICABILITY, INPUTS, "
+        "RESULTS, AND CURRENT REQUIREMENTS"
     ),
     "governing_authority": "Mississippi Department of Transportation",
     "source_documents": [
@@ -65,9 +65,9 @@ _MDOT_CRITERIA_METADATA = {
     ],
     "implementation_module": "Super.py",
     "engineering_change_notice": (
-        "This source identification does not validate the embedded values, formulas, interpolation, or "
-        "branching rules. A qualified roadway engineer must complete the criteria matrix, independently "
-        "check transcription, and approve golden calculations."
+        "Engineering validation is version-specific. Any change to criteria values, formulas, interpolation, "
+        "rounding, or branching rules requires renewed review; the responsible project PE must independently "
+        "verify applicability and results."
     ),
 }
 
@@ -105,8 +105,8 @@ _TDOT_CRITERIA_METADATA = {
     "profile_name": "TDOT RD11 superelevation criteria",
     "revision": "Roadway Design Guidelines revised 2026-04-30 / RD11 drawings issue 2019-01-01",
     "source_status": (
-        "ISSUED TDOT SOURCES TRANSCRIBED; INDEPENDENT ENGINEERING REVIEW AND GOLDEN-CALCULATION "
-        "APPROVAL REQUIRED BEFORE PRODUCTION USE"
+        "ISSUED TDOT SOURCES RECORDED; RESPONSIBLE PROJECT PE MUST VERIFY APPLICABILITY, INPUTS, "
+        "RESULTS, AND CURRENT REQUIREMENTS"
     ),
     "governing_authority": "Tennessee Department of Transportation",
     "source_documents": [
