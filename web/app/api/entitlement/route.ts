@@ -1,5 +1,5 @@
 import commercialManifest from "@/app/generated/commercial-manifest.json";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getProductUser } from "@/app/product-auth";
 import { billingConfigurationStatus } from "@/lib/billing/config";
 import { resolveBillingAccess } from "@/lib/billing/entitlement-policy";
 import { signEntitlementSnapshot } from "@/lib/billing/entitlement-token";
@@ -22,7 +22,7 @@ function snapshotFor(plan: "free" | "pro", status: "active" | "grace", offlineEx
 }
 
 export async function GET() {
-  const user = await getChatGPTUser();
+  const user = await getProductUser();
   const now = Math.floor(Date.now() / 1000);
   if (!user) {
     const entitlement = snapshotFor("free", "active", now);
@@ -35,7 +35,7 @@ export async function GET() {
 
   try {
     const id = await billingUserId(user);
-    await upsertBillingUser({ id, email: user.email, displayName: user.displayName });
+    await upsertBillingUser({ id, email: user.email, displayName: user.displayName, identityProvider: user.provider, identitySubject: user.subject });
     const subscription = await getSubscriptionForUser(id);
     const access = resolveBillingAccess(subscription, now, commercialManifest.browser_grace_days);
     const entitlement = snapshotFor(access.plan, access.status, access.offlineExpiresAt);

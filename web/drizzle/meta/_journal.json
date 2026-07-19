@@ -8,6 +8,13 @@
       "when": 1784494162365,
       "tag": "0000_chubby_maggott",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784497961171,
+      "tag": "0001_damp_namorita",
+      "breakpoints": true
     }
   ]
 }

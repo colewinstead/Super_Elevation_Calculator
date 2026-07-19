@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getProductUser } from "@/app/product-auth";
 import releaseInfo from "@/app/generated/release-info.json";
 import { getBillingConfig } from "@/lib/billing/config";
 import { billingUserId } from "@/lib/billing/identity";
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
-    const user = await getChatGPTUser();
+    const user = await getProductUser();
     if (!user) return Response.json({ error: "Sign in before starting Pro." }, { status: 401 });
 
     const body = await request.json() as {
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     }
 
     const id = await billingUserId(user);
-    const billingUser = await upsertBillingUser({ id, email: user.email, displayName: user.displayName });
+    const billingUser = await upsertBillingUser({ id, email: user.email, displayName: user.displayName, identityProvider: user.provider, identitySubject: user.subject });
     if (!billingUser) throw new Error("Billing storage is unavailable.");
     const existingSubscription = await getSubscriptionForUser(id);
     if (existingSubscription && ["active", "trialing", "past_due"].includes(existingSubscription.status)) {

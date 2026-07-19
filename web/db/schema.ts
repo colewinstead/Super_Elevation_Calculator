@@ -5,11 +5,14 @@ export const billingUsers = sqliteTable("billing_users", {
   id: text("id").primaryKey(),
   email: text("email").notNull(),
   displayName: text("display_name"),
+  identityProvider: text("identity_provider").notNull().default("workos"),
+  identitySubject: text("identity_subject").notNull().default(""),
   stripeCustomerId: text("stripe_customer_id"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   uniqueIndex("billing_users_email_idx").on(table.email),
+  uniqueIndex("billing_users_identity_idx").on(table.identityProvider, table.identitySubject),
   uniqueIndex("billing_users_stripe_customer_idx").on(table.stripeCustomerId),
 ]);
 

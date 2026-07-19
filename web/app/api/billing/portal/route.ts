@@ -1,4 +1,4 @@
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getProductUser } from "@/app/product-auth";
 import { billingUserId } from "@/lib/billing/identity";
 import { requireSameOrigin, safeReturnOrigin } from "@/lib/billing/request-security";
 import { billingRouteError } from "@/lib/billing/route-error";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   try {
     requireSameOrigin(request);
-    const user = await getChatGPTUser();
+    const user = await getProductUser();
     if (!user) return Response.json({ error: "Sign in to manage billing." }, { status: 401 });
     const record = await getBillingUser(await billingUserId(user));
     if (!record?.stripeCustomerId) {

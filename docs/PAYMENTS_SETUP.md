@@ -4,7 +4,7 @@ The browser application supports a $29 USD monthly Pro subscription through Stri
 
 ## Architecture
 
-1. A customer signs in with ChatGPT and accepts the current Terms and Privacy Policy.
+1. A customer signs in through the branded WorkOS AuthKit flow and accepts the current Terms and Privacy Policy.
 2. The server creates or reuses a Stripe Customer and opens hosted Checkout.
 3. The checkout success page displays an activation state but does not grant Pro.
 4. Stripe sends a signature-verified webhook to `/api/stripe/webhook`.

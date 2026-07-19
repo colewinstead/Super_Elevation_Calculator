@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveBillingAccess } from "../lib/billing/entitlement-policy.ts";
+import { billingUserId } from "../lib/billing/identity.ts";
 
 const now = 2_000_000_000;
 
@@ -54,4 +55,18 @@ test("Expired grace fails closed to Free without changing calculation input", ()
   }, now);
   assert.equal(access.plan, "free");
   assert.equal(JSON.stringify(engineeringInput), before);
+});
+
+test("Billing identity follows the WorkOS subject instead of a changeable email address", async () => {
+  const original = {
+    provider: "workos",
+    subject: "user_01JABC123",
+    displayName: "Roadway Engineer",
+    email: "first@example.com",
+    fullName: "Roadway Engineer",
+  };
+  const renamed = { ...original, email: "updated@example.com" };
+  const otherAccount = { ...renamed, subject: "user_01JXYZ789" };
+  assert.equal(await billingUserId(original), await billingUserId(renamed));
+  assert.notEqual(await billingUserId(original), await billingUserId(otherAccount));
 });

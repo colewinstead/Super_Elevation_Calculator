@@ -76,19 +76,22 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
-test("renders public legal pages and a signed-out account page", async () => {
-  const [termsResponse, privacyResponse, accountResponse] = await Promise.all([
+test("renders public legal pages and branded signed-out account access", async () => {
+  const [termsResponse, privacyResponse, accountResponse, loginResponse] = await Promise.all([
     render("/terms"),
     render("/privacy"),
     render("/account"),
+    render("/login"),
   ]);
   assert.equal(termsResponse.status, 200);
   assert.equal(privacyResponse.status, 200);
   assert.equal(accountResponse.status, 200);
-  const [terms, privacy, account] = await Promise.all([
+  assert.equal(loginResponse.status, 200);
+  const [terms, privacy, account, login] = await Promise.all([
     termsResponse.text(),
     privacyResponse.text(),
     accountResponse.text(),
+    loginResponse.text(),
   ]);
   assert.match(terms, /\$29 USD per month/i);
   assert.match(terms, /renews automatically/i);
@@ -96,8 +99,33 @@ test("renders public legal pages and a signed-out account page", async () => {
   assert.match(terms, /licensed professional responsible for the project/i);
   assert.match(privacy, /not automatically uploaded/i);
   assert.match(privacy, /Stripe directly processes/i);
+  assert.match(privacy, /Provider and WorkOS process/i);
   assert.match(account, /Sign in to manage Pro/i);
+  assert.match(account, /Sign in securely/i);
   assert.match(account, /Keep calculating free/i);
+  assert.match(login, /Sign in to Superelevation Calculator/i);
+  assert.match(login, /work email, Microsoft account, or Google account/i);
+  assert.match(login, /Sign-in setup is in progress/i);
+  assert.match(login, /Engineering files and calculations stay on this device/i);
+  assert.doesNotMatch(`${account}${login}`, /ChatGPT|OpenAI account|Sign in with WorkOS/i);
+});
+
+test("uses WorkOS identity without coupling billing access to email", async () => {
+  const [productAuth, proxy, signIn, callback, identity] = await Promise.all([
+    readFile(new URL("../app/product-auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth/sign-in/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/billing/identity.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(productAuth, /withAuth/);
+  assert.match(productAuth, /provider: "workos"/);
+  assert.match(proxy, /authkitProxy/);
+  assert.match(signIn, /getSignInUrl/);
+  assert.match(callback, /handleAuth/);
+  assert.match(identity, /user\.provider.*user\.subject/s);
+  assert.doesNotMatch(identity, /user\.email/);
+  assert.doesNotMatch(`${productAuth}${proxy}${signIn}${callback}`, /oai-authenticated|signin-with-chatgpt|getChatGPTUser/i);
 });
 
 test("payment activation is webhook-driven and does not grant from the success redirect", async () => {

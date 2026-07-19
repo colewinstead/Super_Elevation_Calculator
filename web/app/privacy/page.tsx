@@ -16,7 +16,7 @@ export default function PrivacyPage() {
 
       <section><h2>2. Information collected</h2>
         <p>The Free calculator does not require a Superelevation Calculator account. Hosting and security providers may process limited connection data such as IP address, browser type, device type, requested pages, timestamps, and security events.</p>
-        <p>For paid accounts, Provider processes name, email, organization if supplied, internal account identifier, plan, entitlement status, named-seat information, acceptance versions, and account-security events.</p>
+        <p>For paid accounts, Provider and WorkOS process name, email, authentication method, verification and session events, organization if supplied, internal account identifier, plan, entitlement status, named-seat information, acceptance versions, and account-security events. WorkOS provides branded identity verification and does not receive engineering files or calculations.</p>
         <p>Stripe directly processes payment-card and billing information. Provider receives transaction identifiers, plan, amount, currency, payment and renewal status, and limited billing contact information—not complete card numbers or security codes.</p>
         <p>Support information may include communications, application and engine versions, criteria metadata, operating environment, entitlement status, and redacted logs. Diagnostics do not automatically include project files or exports.</p>
       </section>
@@ -27,7 +27,7 @@ export default function PrivacyPage() {
       </section>
 
       <section><h2>4. Disclosures</h2>
-        <p>Limited personal information may be disclosed to hosting, authentication, email, payment, support, security, accounting, and professional-service providers as needed to operate the Service; to an organization administrator for its seats; when legally required or necessary to protect rights and safety; during a business transaction; or at the user&apos;s direction.</p>
+        <p>Limited personal information may be disclosed to WorkOS for authentication, Stripe for billing, and hosting, email, support, security, accounting, and professional-service providers as needed to operate the Service; to an organization administrator for its seats; when legally required or necessary to protect rights and safety; during a business transaction; or at the user&apos;s direction.</p>
         <p>Provider does not sell personal information for money or share it for cross-context behavioral advertising.</p>
       </section>
 

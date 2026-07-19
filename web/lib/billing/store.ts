@@ -9,17 +9,23 @@ export async function upsertBillingUser(input: {
   id: string;
   email: string;
   displayName: string;
+  identityProvider: string;
+  identitySubject: string;
 }) {
   const db = getDb();
   await db.insert(billingUsers).values({
     id: input.id,
     email: input.email.trim().toLowerCase(),
     displayName: input.displayName,
+    identityProvider: input.identityProvider,
+    identitySubject: input.identitySubject,
   }).onConflictDoUpdate({
     target: billingUsers.id,
     set: {
       email: input.email.trim().toLowerCase(),
       displayName: input.displayName,
+      identityProvider: input.identityProvider,
+      identitySubject: input.identitySubject,
       updatedAt: new Date().toISOString(),
     },
   });

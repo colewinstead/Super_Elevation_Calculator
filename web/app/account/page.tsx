@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getChatGPTUser, chatGPTSignInPath, chatGPTSignOutPath } from "../chatgpt-auth";
+import { signOut } from "@workos-inc/authkit-nextjs";
+import { getProductUser } from "../product-auth";
 import AccountClient from "./AccountClient";
 
 export const metadata: Metadata = { title: "Account and Billing" };
@@ -11,18 +12,18 @@ export default async function AccountPage({
 }: {
   searchParams: Promise<{ checkout?: string }>;
 }) {
-  const user = await getChatGPTUser();
+  const user = await getProductUser();
   const { checkout } = await searchParams;
   return (
     <main className="account-shell">
       <nav className="legal-nav" aria-label="Account navigation">
         <Link href="/">Superelevation Calculator</Link>
-        <div><Link href="/calculator">Calculator</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link>{user && <Link href={chatGPTSignOutPath("/")}>Sign out</Link>}</div>
+        <div><Link href="/calculator">Calculator</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link>{user && <form action={async () => { "use server"; await signOut({ returnTo: "/" }); }}><button className="legal-nav-button" type="submit">Sign out</button></form>}</div>
       </nav>
       <header className="account-heading"><p className="marketing-eyebrow"><span /> Named-user access</p><h1>Account & billing</h1><p>Identity and entitlement are verified online. Engineering work remains local.</p></header>
       {user
         ? <AccountClient checkoutState={checkout} />
-        : <section className="account-card signed-out-card"><h2>Sign in to manage Pro</h2><p>Free manual calculations do not require an account. Sign in only when you want to purchase or manage Pro.</p><Link className="marketing-button primary-action" href={chatGPTSignInPath("/account")}>Sign in with ChatGPT</Link><Link className="marketing-button secondary-action" href="/calculator">Keep calculating free</Link></section>}
+        : <section className="account-card signed-out-card"><h2>Sign in to manage Pro</h2><p>Free manual calculations do not require an account. Sign in only when you want to purchase or manage Pro.</p><Link className="marketing-button primary-action" href="/login">Sign in securely</Link><Link className="marketing-button secondary-action" href="/calculator">Keep calculating free</Link></section>}
     </main>
   );
 }

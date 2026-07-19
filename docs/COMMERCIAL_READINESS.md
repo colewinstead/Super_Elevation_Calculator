@@ -2,7 +2,7 @@
 
 ## Current decision
 
-The Superelevation Calculator has a browser-first payment and entitlement implementation prepared for Stripe test mode. Live charging remains locked until secure Stripe account values, the webhook destination, D1 migrations, and final release acceptance are configured. The browser remains local-first: project JSON, LandXML, calculations, and exports stay on the user's device. Authentication and entitlement checks exchange account and license metadata only.
+The Superelevation Calculator has a browser-first branded authentication, payment, and entitlement implementation prepared for WorkOS and Stripe staging/test mode. Live charging remains locked until secure account values, callback and webhook destinations, D1 migrations, and final release acceptance are configured. The browser remains local-first: project JSON, LandXML, calculations, and exports stay on the user's device. Authentication and entitlement checks exchange account and license metadata only.
 
 The owner reports that the calculator has been reviewed as a Professional Engineer for the recorded application, engine, and criteria scope. The detailed attestation, test vectors, reviewer identity, license information, and supporting evidence remain in a controlled private record outside this public repository. This repository does not make a named or personal PE-certification claim.
 
@@ -77,7 +77,7 @@ Entitlement checks authorize a workflow before it reaches engineering services. 
 
 ## Authentication and automatic Pro activation
 
-The browser uses an `EntitlementProvider` interface so identity and billing vendors can be changed without modifying engineering modules. Public Free calculation remains anonymous. Paid account routes use platform-managed sign-in, map the provider identity to a one-way internal user ID, and perform authorization on the server.
+The browser uses an `EntitlementProvider` interface so identity and billing vendors can be changed without modifying engineering modules. Public Free calculation remains anonymous. Paid account routes use branded WorkOS AuthKit sign-in, map the stable provider subject to a one-way internal user ID, and perform authorization on the server.
 
 The implemented Stripe test-mode flow is:
 
@@ -120,6 +120,6 @@ Future support bundles are explicit and opt-in. They may contain application/eng
 - Browser and service checks for professional workflows.
 - Accessible, feature-specific upgrade messages that preserve work.
 - Browser-first homepage, supported-DOT section, plan comparison, and honest desktop Coming soon status.
-- Platform-managed sign-in for paid accounts, Stripe-hosted Checkout and customer portal routes, a signature-verified webhook, D1 subscription records, and signed offline entitlement snapshots.
+- Branded WorkOS AuthKit sign-in for paid accounts, Stripe-hosted Checkout and customer portal routes, a signature-verified webhook, D1 subscription records, and signed offline entitlement snapshots.
 - Clean public Terms and Privacy routes with private attorney material excluded from the repository.
 - No live keys, production charging, trials, promotion codes, card-data handling, Team administration, or desktop entitlement activation.
