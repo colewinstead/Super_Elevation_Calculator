@@ -42,6 +42,9 @@ class WebServiceTests(unittest.TestCase):
         self.assertEqual(parsed["source"]["filename"], FIXTURE.name)
         self.assertEqual(len(parsed["source"]["sha256"]), 64)
         self.assertGreater(parsed["summary"]["curve_count"], 0)
+        self.assertEqual(parsed["summary"]["coordinate_system"]["status"], "recognized")
+        self.assertEqual(parsed["summary"]["coordinate_system"]["code"], "6507")
+        self.assertTrue(parsed["summary"]["coordinate_system"]["preserve_xy"])
 
     def test_schema_v4_project_round_trip_embeds_landxml(self):
         content = FIXTURE.read_text(encoding="utf-8")

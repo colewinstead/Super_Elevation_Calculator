@@ -757,7 +757,7 @@ Overlay DXF: A graphical overlay with lane slope labels, leaders, PC/PT callouts
 
 DXF COORDINATES
 
-LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting and Y=Northing. Because LandXML may not identify its coordinate system, select the correct MDOT MS83/2011 East or West source zone and destination DGN zone when prompted. In ORD or MicroStation, verify working units, origin, placement, rotation, stationing, text scale, and readability.
+LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting and Y=Northing and preserves the source coordinates without reprojection. The app reports coordinate-system metadata when LandXML declares it. In ORD or MicroStation, verify the detected system, working units, project adjustment, origin, placement, rotation, stationing, text scale, and readability.
 """,
             ),
         ]
@@ -1193,10 +1193,12 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         lines.insert(0, f"Curve name: {meta.get('curve_name', 'n/a')}")
         lines.insert(0, f"Alignment: {meta.get('alignment_name', 'n/a')}")
         if self._landxml_data:
+            coordinate_system = super_landxml.coordinate_system_summary(self._landxml_data.coordinate_system)
             lines.append("")
             lines.append(
                 f"LandXML: {self._landxml_data.alignment_name or 'Unnamed'} | start {Super.format_station(self._landxml_data.start_station, True)} | unit {self._landxml_data.linear_unit or 'unknown'}"
             )
+            lines.append(f"Coordinate system: {coordinate_system['display_name']} | DXF preserves source XY")
         if self.vars["curve_notes"].get().strip():
             lines.append("")
             lines.append(f"Curve notes: {self.vars['curve_notes'].get().strip()}")
@@ -1634,9 +1636,11 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
         self._landxml_curve_presets = data.curve_records()
         warning_suffix = f" | warnings: {len(data.warnings)}" if data.warnings else ""
         equation_suffix = f" | station equations: {len(data.station_equations)} (auto)" if data.station_equations else ""
+        coordinate_system = super_landxml.coordinate_system_summary(data.coordinate_system)
         display_name = self._landxml_source["filename"] if self._landxml_source else os.path.basename(path)
         self.landxml_status.set(
-            f"LandXML: {display_name} | {data.alignment_name or 'Unnamed'} | {data.linear_unit or 'unknown'} | curves: {len(self._landxml_curve_presets)}{equation_suffix}{warning_suffix}"
+            f"LandXML: {display_name} | {data.alignment_name or 'Unnamed'} | {data.linear_unit or 'unknown'} | "
+            f"CRS: {coordinate_system['display_name']} | curves: {len(self._landxml_curve_presets)}{equation_suffix}{warning_suffix}"
         )
         self._refresh_landxml_curve_picker()
         if self._landxml_curve_presets and autofill:
@@ -1780,58 +1784,16 @@ LandXML points are interpreted as Northing/Easting. DXF output uses X=Easting an
                 "Overlay export is disabled until the LandXML geometry is usable and all export stations fall within the alignment range.",
             )
             return
-        coordinate_config = self._ask_overlay_coordinate_systems()
-        if coordinate_config is None:
-            return
         path = filedialog.asksaveasfilename(defaultextension=".dxf", filetypes=[("DXF files", "*.dxf")], title="Save Overlay DXF")
         if not path:
             return
         try:
-            warnings = super_dxf.export_overlay_dxf(path, curves, data, coordinate_config)
+            warnings = super_dxf.export_overlay_dxf(path, curves, data)
             self._write_warning_report(path, warnings, "overlay_dxf")
         except Exception as exc:
             self._show_operation_error("Export Overlay DXF", "overlay_dxf_export", exc, path)
             return
         messagebox.showinfo("Export Overlay DXF", f"Saved overlay DXF to:\n{os.path.basename(path)}")
-
-    def _ask_overlay_coordinate_systems(self) -> dict | None:
-        dialog = tk.Toplevel(self)
-        dialog.title("DXF Coordinate Systems")
-        dialog.transient(self)
-        dialog.resizable(False, False)
-        dialog.configure(background=DARK_PANEL)
-        result: dict | None = None
-        source = tk.StringVar(value=next(iter(super_dxf.MDOT_COORDINATE_SYSTEMS)))
-        target = tk.StringVar(value=next(iter(super_dxf.MDOT_COORDINATE_SYSTEMS)))
-        body = ttk.Frame(dialog, style="Panel.TFrame", padding=14)
-        body.grid(sticky="nsew")
-        ttk.Label(body, text="Confirm DXF coordinate systems", style="Header.TLabel").grid(row=0, column=0, columnspan=2, sticky="w")
-        ttk.Label(
-            body,
-            text="The LandXML does not identify its coordinate system. Select the source zone and the coordinate system assigned to the destination DGN.",
-            style="Muted.Panel.TLabel",
-            wraplength=460,
-            justify="left",
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 12))
-        ttk.Label(body, text="LandXML source", style="Panel.TLabel").grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Combobox(body, textvariable=source, values=list(super_dxf.MDOT_COORDINATE_SYSTEMS), state="readonly", width=56).grid(row=2, column=1, sticky="ew", pady=4)
-        ttk.Label(body, text="Destination DGN", style="Panel.TLabel").grid(row=3, column=0, sticky="w", pady=4)
-        ttk.Combobox(body, textvariable=target, values=list(super_dxf.MDOT_COORDINATE_SYSTEMS), state="readonly", width=56).grid(row=3, column=1, sticky="ew", pady=4)
-
-        def confirm() -> None:
-            nonlocal result
-            result = {"source_coordinate_system": source.get(), "target_coordinate_system": target.get()}
-            dialog.destroy()
-
-        buttons = ttk.Frame(body, style="Panel.TFrame")
-        buttons.grid(row=4, column=0, columnspan=2, sticky="e", pady=(12, 0))
-        ttk.Button(buttons, text="Cancel", command=dialog.destroy).grid(row=0, column=0, padx=(0, 6))
-        ttk.Button(buttons, text="Export DXF", command=confirm, style="Primary.TButton").grid(row=0, column=1)
-        body.columnconfigure(1, weight=1)
-        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
-        dialog.grab_set()
-        dialog.wait_window()
-        return result
 
     def _export_pdf(self) -> None:
         curves = self._export_curves()

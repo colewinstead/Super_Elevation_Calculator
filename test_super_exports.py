@@ -359,18 +359,23 @@ class SuperExportTests(unittest.TestCase):
 
         self.assertRegex(text, r"\$HANDSEED\s+5\s+[0-9A-F]+")
 
-    def test_same_mdot_coordinate_system_preserves_coordinates(self):
-        coordinate_system = next(iter(super_dxf.MDOT_COORDINATE_SYSTEMS))
-        transform = super_dxf.coordinate_transformer(coordinate_system, coordinate_system)
-        self.assertEqual(transform(1568586.0, 827908.0), (1568586.0, 827908.0))
+    def test_overlay_dxf_preserves_landxml_xy_coordinates(self):
+        landxml = super_landxml.load_landxml(LANDXML_FIXTURE)
+        first_line = landxml.lines[0]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "preserved_xy.dxf"
+            super_dxf.export_overlay_dxf(path, [self.sample_overlay_curve("right")], landxml)
+            entities = _parse_dxf_entities(path.read_text(encoding="utf-8"))
 
-    def test_mdot_east_and_west_transform_round_trip(self):
-        east, west = list(super_dxf.MDOT_COORDINATE_SYSTEMS)
-        point = (1568586.0, 827908.0)
-        west_point = super_dxf.coordinate_transformer(east, west)(*point)
-        round_trip = super_dxf.coordinate_transformer(west, east)(*west_point)
-        self.assertAlmostEqual(round_trip[0], point[0], places=3)
-        self.assertAlmostEqual(round_trip[1], point[1], places=3)
+        alignment_line = next(
+            entity
+            for entity in entities
+            if entity["type"] == "LINE" and entity.get("8") == "ALI_DESIGN_ML_CURVES"
+        )
+        self.assertEqual(float(alignment_line["10"]), first_line.start[0])
+        self.assertEqual(float(alignment_line["20"]), first_line.start[1])
+        self.assertEqual(float(alignment_line["11"]), first_line.end[0])
+        self.assertEqual(float(alignment_line["21"]), first_line.end[1])
 
     def test_detail_dxf_contains_curve_labels(self):
         with tempfile.TemporaryDirectory() as tmpdir:

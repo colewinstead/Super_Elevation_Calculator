@@ -112,9 +112,6 @@ export default function CalculatorApp() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [sourceCrs, setSourceCrs] = useState("");
-  const [targetCrs, setTargetCrs] = useState("");
-
   const startWorker = useCallback(() => {
     workerRef.current?.terminate();
     pendingRef.current.forEach(({ reject }) => reject(new Error("Browser workspace restarted.")));
@@ -131,9 +128,6 @@ export default function CalculatorApp() {
       } else if (message.type === "ready") {
         setRuntime("ready");
         setManifest(message.manifest);
-        const systems = message.manifest?.options?.coordinate_systems || [];
-        setSourceCrs((value) => value || systems[0] || "");
-        setTargetCrs((value) => value || systems[0] || "");
       } else if (message.type === "fatal") {
         setRuntime("error");
         setRuntimeMessage(message.message);
@@ -439,7 +433,6 @@ export default function CalculatorApp() {
     if (operation === "export_overlay_dxf") {
       if (!landxml) return setError("Select LandXML before exporting an overlay DXF.");
       payload.landxml_source = landxml.source;
-      payload.coordinate_config = { source_coordinate_system: sourceCrs, target_coordinate_system: targetCrs };
     }
     const details = EXPORT_DETAILS[operation] || { suffix: "", description: `${extension.toUpperCase()} export` };
     const filename = `${cleanName(inputs.project_name, "superelevation")}${details.suffix}.${extension}`;
@@ -519,7 +512,7 @@ export default function CalculatorApp() {
           <div className="source-card">
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
             <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label>
-            {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>{landxml.summary.curve_count} curves · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
+            {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
           </div>
           <div className="curve-list"><div className="list-title"><h3>Calculated curves</h3><span>{curves.length}</span></div>
             {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <button key={index} className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>)}
@@ -566,7 +559,7 @@ export default function CalculatorApp() {
         </section>
       </div>
 
-      <section className="exports panel"><div><p className="step">04</p><h2>Review & export</h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-fields"><label><span>LandXML source CRS</span><select value={sourceCrs} onChange={(e) => setSourceCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label><label><span>Destination CRS</span><select value={targetCrs} onChange={(e) => setTargetCrs(e.target.value)}>{manifest?.options?.coordinate_systems?.map((item: string) => <option key={item}>{item}</option>)}</select></label></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF</button></div></section>
+      <section className="exports panel"><div><p className="step">04</p><h2>Review & export</h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-status"><span>Overlay coordinates</span><strong>{landxml?.summary?.coordinate_system?.display_name || "Select LandXML to detect"}</strong><small>DXF preserves the LandXML XY coordinates without reprojection.</small></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF</button></div></section>
 
       <footer><p><strong>Engineering aid.</strong> Validate criteria, stationing, coordinate systems, lane naming, and exported geometry against governing standards and the project design file.</p><p>No account · No upload · Browser-only processing</p></footer>
     </main>

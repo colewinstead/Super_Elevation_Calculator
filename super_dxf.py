@@ -9,8 +9,6 @@ import super_landxml
 
 
 DEFAULT_CONFIG = {
-    "source_coordinate_system": "MDOT-MS83/2011-EF — Mississippi East Zone, US survey foot",
-    "target_coordinate_system": "MDOT-MS83/2011-EF — Mississippi East Zone, US survey foot",
     "text_height": 8.0,
     "title_text_height": 14.0,
     "table_text_height": 7.0,
@@ -48,29 +46,6 @@ DEFAULT_CONFIG = {
         "ALI_DESIGN_ML_LABELS_TX": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
     },
 }
-
-MDOT_COORDINATE_SYSTEMS = {
-    "MDOT-MS83/2011-EF — Mississippi East Zone, US survey foot": "EPSG:6507",
-    "MDOT-MS83/2011-WF — Mississippi West Zone, US survey foot": "EPSG:6510",
-}
-
-
-def coordinate_transformer(source_name: str, target_name: str):
-    """Build a source-to-target MDOT coordinate transformer, preserving XY order."""
-    try:
-        source_crs = MDOT_COORDINATE_SYSTEMS[source_name]
-        target_crs = MDOT_COORDINATE_SYSTEMS[target_name]
-    except KeyError as exc:
-        raise ValueError("Select a supported MDOT coordinate system for both the LandXML and destination DGN.") from exc
-    if source_crs == target_crs:
-        return lambda x, y: (x, y)
-    try:
-        from pyproj import Transformer
-    except ImportError as exc:
-        raise RuntimeError("Coordinate transformation requires pyproj. Install the project requirements and try again.") from exc
-    transformer = Transformer.from_crs(source_crs, target_crs, always_xy=True)
-    return transformer.transform
-
 
 def overlay_export_issues(
     curves: Iterable[dict], landxml: super_landxml.LandXMLData
@@ -500,14 +475,11 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
     cfg = _cfg(config)
     writer = DxfWriter()
     warnings = list(landxml.warnings)
-    transform = coordinate_transformer(
-        str(cfg.get("source_coordinate_system", "")), str(cfg.get("target_coordinate_system", ""))
-    )
 
     for segment in landxml._segments:
         if isinstance(segment, super_landxml.LineSegment):
-            start_x, start_y = transform(segment.start[0], segment.start[1])
-            end_x, end_y = transform(segment.end[0], segment.end[1])
+            start_x, start_y = segment.start
+            end_x, end_y = segment.end
             writer.add_line(start_x, start_y, end_x, end_y, cfg["layers"]["alignment"])
         else:
             samples = max(int(math.ceil(segment.length / 50.0)), 8)
@@ -519,7 +491,7 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
                 start_station += prior.length
             for idx in range(samples + 1):
                 station = start_station + segment.length * (idx / samples)
-                points.append(transform(*landxml.xy_at_station(station)))
+                points.append(landxml.xy_at_station(station))
             writer.add_polyline(points, cfg["layers"]["alignment"])
 
     for curve_index, curve in enumerate(curves):
@@ -541,10 +513,10 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
         for row_index, row in enumerate(rows):
             station = float(row["station"])
             try:
-                x, y = transform(*landxml.xy_at_station(station))
+                x, y = landxml.xy_at_station(station)
                 tx, ty = landxml.tangent_at_station(station)
                 label_station = float(row.get("_label_station", station))
-                label_x, label_y = transform(*landxml.xy_at_station(label_station))
+                label_x, label_y = landxml.xy_at_station(label_station)
             except ValueError as exc:
                 warnings.append(str(exc))
                 continue

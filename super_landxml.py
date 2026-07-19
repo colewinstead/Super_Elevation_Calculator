@@ -1,14 +1,211 @@
 from __future__ import annotations
 
 import math
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+
+from pyproj import CRS
 
 import Super
 
 
 NS = {"lx": "http://www.landxml.org/schema/LandXML-1.2"}
+
+
+KNOWN_HORIZONTAL_COORDINATE_SYSTEMS = {
+    "tn832011f": "EPSG:6576",
+    "nad832011tennesseeftus": "EPSG:6576",
+    "tn83f": "EPSG:2274",
+    "nad83tennesseeftus": "EPSG:2274",
+    "mdotms832011ef": "EPSG:6507",
+    "ms832011ef": "EPSG:6507",
+    "nad832011mississippieastftus": "EPSG:6507",
+    "mdotms832011wf": "EPSG:6510",
+    "ms832011wf": "EPSG:6510",
+    "nad832011mississippiwestftus": "EPSG:6510",
+}
+
+
+def _normalized_crs_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+@dataclass(frozen=True)
+class CoordinateSystemInfo:
+    status: str
+    authority: str | None
+    code: str | None
+    canonical_name: str | None
+    detection_source: str | None
+    name: str | None
+    description: str | None
+    horizontal_datum: str | None
+    vertical_datum: str | None
+    horizontal_coordinate_system_name: str | None
+    file_location: str | None
+    epsg_code: str | None
+    ogc_wkt: str | None
+    raw_attributes: dict[str, str]
+    issues: tuple[str, ...] = ()
+
+    @property
+    def display_name(self) -> str:
+        if self.status == "missing":
+            return "Not declared in LandXML"
+        if self.status == "conflicting":
+            return "Conflicting coordinate-system metadata"
+        declared_name = self.horizontal_coordinate_system_name or self.name or self.description
+        if self.status != "recognized":
+            return f"Declared but not recognized: {declared_name}" if declared_name else "Declared but not recognized"
+        label = self.canonical_name or declared_name or "Recognized coordinate system"
+        authority_code = f"{self.authority}:{self.code}" if self.authority and self.code else ""
+        if authority_code and authority_code.lower() not in label.lower():
+            return f"{label} — {authority_code}"
+        return label
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "display_name": self.display_name,
+            "authority": self.authority,
+            "code": self.code,
+            "canonical_name": self.canonical_name,
+            "detection_source": self.detection_source,
+            "name": self.name,
+            "description": self.description,
+            "horizontal_datum": self.horizontal_datum,
+            "vertical_datum": self.vertical_datum,
+            "horizontal_coordinate_system_name": self.horizontal_coordinate_system_name,
+            "file_location": self.file_location,
+            "epsg_code": self.epsg_code,
+            "issues": list(self.issues),
+            "preserve_xy": True,
+        }
+
+
+def _missing_coordinate_system() -> CoordinateSystemInfo:
+    return CoordinateSystemInfo(
+        status="missing",
+        authority=None,
+        code=None,
+        canonical_name=None,
+        detection_source=None,
+        name=None,
+        description=None,
+        horizontal_datum=None,
+        vertical_datum=None,
+        horizontal_coordinate_system_name=None,
+        file_location=None,
+        epsg_code=None,
+        ogc_wkt=None,
+        raw_attributes={},
+    )
+
+
+def coordinate_system_summary(info: CoordinateSystemInfo | None) -> dict[str, Any]:
+    return (info or _missing_coordinate_system()).as_dict()
+
+
+def _coordinate_system_node(root: ET.Element) -> ET.Element | None:
+    for candidate in root.iter():
+        if candidate.tag.rsplit("}", 1)[-1] == "CoordinateSystem":
+            return candidate
+    return None
+
+
+def _crs_candidate(value: str, source: str, *, wkt: bool = False) -> tuple[str, str | None, str | None, str] | None:
+    try:
+        crs = CRS.from_wkt(value) if wkt else CRS.from_user_input(value)
+    except Exception:
+        return None
+    authority = crs.to_authority()
+    return crs.name, authority[0] if authority else None, authority[1] if authority else None, source
+
+
+def _parse_coordinate_system(node: ET.Element | None) -> CoordinateSystemInfo:
+    if node is None:
+        return _missing_coordinate_system()
+
+    attributes = {key.rsplit("}", 1)[-1]: value.strip() for key, value in node.attrib.items()}
+    name = attributes.get("name") or None
+    description = attributes.get("desc") or None
+    horizontal_datum = attributes.get("horizontalDatum") or None
+    vertical_datum = attributes.get("verticalDatum") or None
+    horizontal_name = attributes.get("horizontalCoordinateSystemName") or None
+    file_location = attributes.get("fileLocation") or None
+    epsg_code = attributes.get("epsgCode") or None
+    ogc_wkt = attributes.get("ogcWktCode") or None
+    issues: list[str] = []
+    candidates: list[tuple[str, str | None, str | None, str]] = []
+
+    if epsg_code:
+        match = re.fullmatch(r"(?:EPSG\s*[:_-]?\s*)?(\d+)", epsg_code, flags=re.IGNORECASE)
+        candidate = _crs_candidate(f"EPSG:{match.group(1)}", "epsgCode") if match else None
+        if candidate:
+            candidates.append(candidate)
+        else:
+            issues.append(f"LandXML epsgCode '{epsg_code}' is not a valid EPSG coordinate reference system.")
+
+    if ogc_wkt:
+        candidate = _crs_candidate(ogc_wkt, "ogcWktCode", wkt=True)
+        if candidate:
+            candidates.append(candidate)
+        else:
+            issues.append("LandXML ogcWktCode could not be parsed as coordinate-system WKT.")
+
+    for source, value in (
+        ("horizontalCoordinateSystemName", horizontal_name),
+        ("name", name),
+        ("desc", description),
+    ):
+        if not value:
+            continue
+        epsg_match = re.search(r"\bEPSG\s*[:_-]?\s*(\d+)\b", value, flags=re.IGNORECASE)
+        known_value = f"EPSG:{epsg_match.group(1)}" if epsg_match else KNOWN_HORIZONTAL_COORDINATE_SYSTEMS.get(_normalized_crs_name(value))
+        if not known_value:
+            continue
+        candidate = _crs_candidate(known_value, source)
+        if candidate:
+            candidates.append(candidate)
+
+    authority_codes = {
+        (authority.upper(), code)
+        for _, authority, code, _ in candidates
+        if authority and code
+    }
+    if len(authority_codes) > 1:
+        choices = ", ".join(f"{authority}:{code}" for authority, code in sorted(authority_codes))
+        issues.append(f"LandXML coordinate-system fields disagree ({choices}).")
+        status = "conflicting"
+        selected = None
+    elif candidates:
+        status = "recognized"
+        selected = candidates[0]
+    else:
+        status = "declared_unrecognized"
+        selected = None
+
+    canonical_name, authority, code, detection_source = selected or (None, None, None, None)
+    return CoordinateSystemInfo(
+        status=status,
+        authority=authority,
+        code=code,
+        canonical_name=canonical_name,
+        detection_source=detection_source,
+        name=name,
+        description=description,
+        horizontal_datum=horizontal_datum,
+        vertical_datum=vertical_datum,
+        horizontal_coordinate_system_name=horizontal_name,
+        file_location=file_location,
+        epsg_code=epsg_code,
+        ogc_wkt=ogc_wkt,
+        raw_attributes=attributes,
+        issues=tuple(issues),
+    )
 
 
 def _parse_point(text: str) -> tuple[float, float]:
@@ -55,7 +252,7 @@ class LandXMLData:
     spirals: list[dict]
     station_equations: list[dict]
     superelevation_nodes: list[dict]
-    coordinate_system: str | None
+    coordinate_system: CoordinateSystemInfo | None
     warnings: list[str]
     _segments: list[LineSegment | ArcSegment]
 
@@ -213,10 +410,14 @@ def _parse_landxml_root(root: ET.Element, source_name: str) -> LandXMLData:
         warnings.append("Station equations found; displayed civil stationing will be applied to inputs and export labels.")
 
     superelevation_nodes = [dict(node.attrib) for node in root.findall(".//lx:Superelevation", NS)]
-    coordinate_system = None
-    for candidate in root.findall(".//lx:CoordinateSystem", NS):
-        coordinate_system = ET.tostring(candidate, encoding="unicode")
-        break
+    coordinate_system = _parse_coordinate_system(_coordinate_system_node(root))
+    if coordinate_system.status == "missing":
+        warnings.append("LandXML does not declare a coordinate system; overlay DXF coordinates will be preserved unchanged.")
+    elif coordinate_system.status == "declared_unrecognized":
+        warnings.append("LandXML declares a coordinate system that could not be identified; overlay DXF coordinates will be preserved unchanged.")
+    elif coordinate_system.status == "conflicting":
+        warnings.append("LandXML contains conflicting coordinate-system metadata; overlay DXF coordinates will be preserved unchanged.")
+    warnings.extend(coordinate_system.issues)
 
     return LandXMLData(
         path=file_path,
