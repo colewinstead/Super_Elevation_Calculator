@@ -19,6 +19,7 @@ import super_landxml
 from super_lane import lane_profile_points, parse_slope_percent, slope_at_station, slope_matches
 import super_pdf
 import super_project
+import super_qa
 
 
 DEFAULT_INPUTS = {
@@ -245,6 +246,38 @@ def lookup(results: dict, direction: str, station_text: str = "", slope_text: st
     return response
 
 
+def curve_diagram(results: dict, direction: str = "left") -> dict[str, Any]:
+    return super_qa.curve_diagram(results, direction)
+
+
+def corridor_diagram(curves: list[dict]) -> dict[str, Any]:
+    return super_qa.corridor_diagram(curves)
+
+
+def diagram_lookup(results: dict, direction: str, station: float) -> dict[str, Any]:
+    return super_qa.diagram_lookup(results, direction, float(station))
+
+
+def corridor_qa(content: str, filename: str, curves: list[dict], excluded_curve_indexes: list[int] | None = None) -> dict[str, Any]:
+    data = super_landxml.parse_landxml_text(content, filename)
+    return super_qa.analyze_corridor(data, curves, excluded_curve_indexes)
+
+
+def plan_view(content: str, filename: str, curves: list[dict]) -> dict[str, Any]:
+    data = super_landxml.parse_landxml_text(content, filename)
+    preview = super_dxf.overlay_preview_model(curves, data)
+    errors, issue_warnings = super_dxf.overlay_export_issues(curves, data)
+    warnings = list(dict.fromkeys([*preview.get("warnings", []), *issue_warnings]))
+    return {
+        **preview,
+        "alignment_name": data.alignment_name,
+        "coordinate_system": data.coordinate_system.as_dict() if data.coordinate_system else None,
+        "linear_unit": data.linear_unit,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
 def _distance_to_range(station_range: tuple[float, float], station: float) -> float:
     start, end = station_range
     if start <= station <= end:
@@ -332,6 +365,18 @@ def dispatch(operation: str, payload_json: str = "{}") -> Any:
         "lookup": lambda: lookup(
             payload["results"], payload.get("direction", "left"), payload.get("station", ""), payload.get("slope", "")
         ),
+        "curve_diagram": lambda: curve_diagram(payload["results"], payload.get("direction", "left")),
+        "corridor_diagram": lambda: corridor_diagram(payload.get("curves", [])),
+        "diagram_lookup": lambda: diagram_lookup(
+            payload["results"], payload.get("direction", "left"), payload["station"]
+        ),
+        "corridor_qa": lambda: corridor_qa(
+            payload["content"], payload.get("filename", "alignment.xml"), payload.get("curves", []),
+            payload.get("excluded_curve_indexes", []),
+        ),
+        "plan_view": lambda: plan_view(
+            payload["content"], payload.get("filename", "alignment.xml"), payload.get("curves", [])
+        ),
         "project_load": lambda: project_load(payload["content"]),
         "project_save": lambda: project_save(payload["project"]),
         "export_ord_csv": lambda: export_ord_csv(payload["curves"]),
@@ -346,3 +391,14 @@ def dispatch(operation: str, payload_json: str = "{}") -> Any:
     except KeyError as exc:
         raise ValueError(f"Unsupported browser operation: {operation}") from exc
     return handler()
+
+
+def dispatch_safe(operation: str, payload_json: str = "{}") -> dict[str, Any]:
+    """Return browser-operation failures as concise structured messages."""
+    try:
+        return {"ok": True, "result": dispatch(operation, payload_json)}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": {"type": type(exc).__name__, "message": str(exc) or "Operation failed."},
+        }

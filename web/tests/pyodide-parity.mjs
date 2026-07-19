@@ -47,6 +47,25 @@ assert.deepEqual(
 assert.ok(calculation.lanes.left.length > 0);
 assert.ok(calculation.lanes.right.length > 0);
 
+pyodide.globals.set("diagram_payload", JSON.stringify({ results: calculation.results, direction: "right" }));
+const diagramProxy = pyodide.runPython(`super_service.dispatch("curve_diagram", diagram_payload)`);
+const diagram = diagramProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+diagramProxy.destroy();
+assert.ok(diagram.profiles.left.length > 0);
+assert.ok(diagram.markers.some((marker) => marker.kind === "PC"));
+
+pyodide.globals.set("corridor_diagram_payload", JSON.stringify({
+  curves: [
+    { results: calculation.results, meta: { curve_name: "Curve A", curve_direction: "right" } },
+    { results: calculation.results, meta: { curve_name: "Curve B", curve_direction: "left" } },
+  ],
+}));
+const corridorDiagramProxy = pyodide.runPython(`super_service.dispatch("corridor_diagram", corridor_diagram_payload)`);
+const corridorDiagram = corridorDiagramProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+corridorDiagramProxy.destroy();
+assert.equal(corridorDiagram.curve_count, 2);
+assert.deepEqual(corridorDiagram.curves.map((curve) => curve.curve_name), ["Curve A", "Curve B"]);
+
 const tdotPayload = JSON.stringify({
   inputs: {
     criteria_profile: "tdot-rd11-2026-04-30",
@@ -86,6 +105,66 @@ assert.equal(landxml.summary.coordinate_system.status, "recognized");
 assert.equal(landxml.summary.coordinate_system.code, "6576");
 assert.equal(landxml.summary.coordinate_system.preserve_xy, true);
 
+const corridorContent = `<?xml version="1.0"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
+  <Units><Imperial linearUnit="USSurveyFoot" /></Units>
+  <Alignments><Alignment name="QA Test" length="2785.398" staStart="0"><CoordGeom>
+    <Line length="1000"><Start>0 0 0</Start><End>0 1000 0</End></Line>
+    <Curve rot="ccw" radius="500" length="785.398"><Start>0 1000 0</Start><Center>-500 1000 0</Center><End>-500 1500 0</End></Curve>
+    <Line length="1000"><Start>-500 1500 0</Start><End>-500 2500 0</End></Line>
+  </CoordGeom></Alignment></Alignments>
+</LandXML>`;
+const batchPayload = JSON.stringify({
+  content: corridorContent,
+  filename: "qa-test.xml",
+  shared_inputs: { speed: "30", facility: "centerline", area: "rural", lane_width: "12", lanes_rotated: "2", normal_crown: "0.02" },
+});
+pyodide.globals.set("batch_payload", batchPayload);
+const batchProxy = pyodide.runPython(`super_service.dispatch("build_all_landxml_curves", batch_payload)`);
+const batchCurves = batchProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+batchProxy.destroy();
+pyodide.globals.set("qa_payload", JSON.stringify({ content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
+const qaProxy = pyodide.runPython(`super_service.dispatch("corridor_qa", qa_payload)`);
+const qa = qaProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+qaProxy.destroy();
+assert.equal(qa.status, "pass");
+assert.equal(qa.curve_count, 1);
+
+pyodide.globals.set("plan_payload", JSON.stringify({ content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
+const planProxy = pyodide.runPython(`super_service.dispatch("plan_view", plan_payload)`);
+const plan = planProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+planProxy.destroy();
+assert.ok(plan.entities.some((entity) => entity.type === "LINE"));
+assert.ok(plan.entities.some((entity) => entity.type === "TEXT"));
+assert.ok(
+  plan.entities.some((entity) => entity.type === "TEXT" && entity.text_style === "Engineering Regular"),
+  "Plan View should preserve the exported Engineering Regular text style",
+);
+assert.equal(plan.layers.ALI_DESIGN_ML_CURVES.color, 8);
+assert.equal(plan.background, "#101010");
+assert.equal(plan.curve_paths, undefined);
+
+pyodide.globals.set("invalid_project_payload", JSON.stringify({ content: "" }));
+const invalidProjectProxy = pyodide.runPython(`super_service.dispatch_safe("project_load", invalid_project_payload)`);
+const invalidProject = invalidProjectProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+invalidProjectProxy.destroy();
+assert.equal(invalidProject.ok, false);
+assert.match(invalidProject.error.message, /not valid JSON/);
+assert.doesNotMatch(invalidProject.error.message, /Traceback/);
+
+pyodide.globals.set("excluded_qa_payload", JSON.stringify({
+  content: corridorContent,
+  filename: "qa-test.xml",
+  curves: [],
+  excluded_curve_indexes: [0],
+}));
+const excludedQaProxy = pyodide.runPython(`super_service.dispatch("corridor_qa", excluded_qa_payload)`);
+const excludedQa = excludedQaProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+excludedQaProxy.destroy();
+assert.equal(excludedQa.status, "pass");
+assert.equal(excludedQa.curve_count, 0);
+assert.equal(excludedQa.excluded_count, 1);
+
 pyodide.globals.set("results_payload", JSON.stringify({
   curves: [{ results: calculation.results, meta: { curve_direction: "right" }, notes: "" }],
 }));
@@ -104,4 +183,4 @@ const dxf = dxfProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: 
 dxfProxy.destroy();
 assert.match(new TextDecoder().decode(dxf.content), /SECTION/);
 
-console.log("Pyodide calculation and export parity passed.");
+console.log("Pyodide calculation, analysis, and export parity passed.");

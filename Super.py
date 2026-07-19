@@ -1763,30 +1763,30 @@ def format_results(results: dict, station_format: bool) -> list[str]:
 
     lines.append("\n--- Results ---")
     lines.append(f"Facility case: {results['facility'] or 'n/a'}")
-    if results["pt_ft"] is not None:
+    if results.get("pt_ft") is not None:
         lines.append(f"PT: {format_result_station(results, results['pt_ft'], station_format)}")
     lines.append(f"Superelevation rate e: {results['e']:.4f} ft/ft")
     lines.append(f"e_max used: {results['e_max']:.2f} ft/ft")
     lines.append(f"e source: {results['e_source']}")
-    if results["friction"] is not None:
+    if results.get("friction") is not None:
         lines.append(f"Side friction factor f: {results['friction']:.4f}")
-    if results["friction_note"]:
+    if results.get("friction_note"):
         lines.append(f"Note: {results['friction_note']}")
-    if results["e_note"]:
+    if results.get("e_note"):
         lines.append(f"Note: {results['e_note']}")
     if results.get("runoff_note"):
         lines.append(f"Note: {results['runoff_note']}")
     lines.append(
         f"Lanes rotated used: {results['lanes_used']:.1f} (n1={results['n1']:.1f}, bw={results['bw']:.3f})"
     )
-    if results["lanes_note"]:
+    if results.get("lanes_note"):
         lines.append(f"Note: {results['lanes_note']}")
     lines.append(f"Relative gradient used: {results['relative_gradient']:.4f} ft/ft")
-    if results["rel_grad_note"]:
+    if results.get("rel_grad_note"):
         lines.append(f"Note: {results['rel_grad_note']}")
     radius_label = "TDOT table radii (Rnc, R at 2%)" if is_tdot else "Table 3-4-A radii (Rnc, Rrc)"
     lines.append(f"{radius_label}: {results['r_normal']:.0f} ft, {results['r_reverse']:.0f} ft")
-    if results["r_note"]:
+    if results.get("r_note"):
         lines.append(f"Note: {results['r_note']}")
     lines.append(f"Crown condition by governing table: {results['crown_state']}")
     for warning in results.get("warnings", []) or []:
@@ -1815,7 +1815,7 @@ def format_results(results: dict, station_format: bool) -> list[str]:
         lines.append(
             f"Full super (PC + one-half total): {format_result_station(results, results['full_super_ft'], station_format)}"
         )
-        if results["pt_ft"] is not None:
+        if results.get("pt_ft") is not None:
             lines.append(
                 f"Full super (PT - one-half total): {format_result_station(results, results['full_super_out_ft'], station_format)}"
             )
@@ -1837,7 +1837,7 @@ def format_results(results: dict, station_format: bool) -> list[str]:
     lines.append(
         f"Full super (PC + 0.3L): {format_result_station(results, results['full_super_ft'], station_format)}"
     )
-    if results["pt_ft"] is not None:
+    if results.get("pt_ft") is not None:
         lines.append(
             f"Full super (PT - 0.3L): {format_result_station(results, results['full_super_out_ft'], station_format)}"
         )

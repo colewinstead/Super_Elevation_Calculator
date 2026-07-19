@@ -28,6 +28,8 @@ def build_curve_from_preset(preset: dict, shared_inputs: dict[str, str]) -> dict
     return {
         "results": results,
         "meta": {
+            "landxml_curve_index": preset.get("landxml_curve_index"),
+            "landxml_curve_id": str(preset.get("landxml_curve_id", "") or ""),
             "project_name": str(shared_inputs.get("project_name", "") or ""),
             "route_name": str(shared_inputs.get("route_name", "") or ""),
             "alignment_name": str(preset.get("alignment_name", "") or ""),

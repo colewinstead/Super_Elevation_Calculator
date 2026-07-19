@@ -66,8 +66,9 @@ self.onmessage = async (event) => {
     const payloadJson = JSON.stringify(payload);
     pyodide.globals.set("_web_operation", operation);
     pyodide.globals.set("_web_payload", payloadJson);
-    const proxy = pyodide.runPython("super_service.dispatch(_web_operation, _web_payload)");
-    self.postMessage({ type: "response", id, ok: true, result: convertResult(proxy) });
+    const proxy = pyodide.runPython("super_service.dispatch_safe(_web_operation, _web_payload)");
+    const response = convertResult(proxy);
+    self.postMessage({ type: "response", id, ...response });
   } catch (error) {
     self.postMessage({
       type: "response",

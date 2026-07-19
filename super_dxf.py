@@ -40,7 +40,7 @@ DEFAULT_CONFIG = {
         "overlay_text": "ALI_DESIGN_ML_LABELS_TX",
     },
     "overlay_layer_styles": {
-        "ALI_DESIGN_ML_CURVES": {"color": 55, "linetype": "CONTINUOUS", "lineweight": 40},
+        "ALI_DESIGN_ML_CURVES": {"color": 8, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS": {"color": 10, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_STA": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS_TX": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
@@ -84,6 +84,7 @@ class DxfWriter:
     def __init__(self) -> None:
         self.entities: list[str] = []
         self._records: list[tuple] = []
+        self._preview_metadata: dict[int, dict] = {}
         self._next_handle_value = 0x100
 
     def _next_handle(self) -> str:
@@ -95,8 +96,20 @@ class DxfWriter:
         for value in pairs:
             self.entities.append(str(value))
 
-    def add_line(self, x1: float, y1: float, x2: float, y2: float, layer: str) -> None:
+    def add_line(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        layer: str,
+        *,
+        preview: dict | None = None,
+    ) -> None:
+        record_index = len(self._records)
         self._records.append(("LINE", float(x1), float(y1), float(x2), float(y2), str(layer)))
+        if preview is not None:
+            self._preview_metadata[record_index] = dict(preview)
         self._append(
             0,
             "LINE",
@@ -132,8 +145,11 @@ class DxfWriter:
         rotation: float = 0.0,
         alignment: str = "LEFT",
         text_style: str = "Standard",
+        *,
+        preview: dict | None = None,
     ) -> None:
         safe_text = str(text).replace("\n", " ")
+        record_index = len(self._records)
         self._records.append(
             (
                 "TEXT",
@@ -147,6 +163,8 @@ class DxfWriter:
                 str(text_style),
             )
         )
+        if preview is not None:
+            self._preview_metadata[record_index] = dict(preview)
         self._append(
             0,
             "TEXT",
@@ -471,7 +489,12 @@ def _overlay_station_label(row: dict, curve: dict) -> str:
     return label
 
 
-def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_landxml.LandXMLData, config: dict | None = None) -> list[str]:
+def build_overlay_drawing(
+    curves: Iterable[dict],
+    landxml: super_landxml.LandXMLData,
+    config: dict | None = None,
+) -> tuple[DxfWriter, dict, list[str]]:
+    """Build the single authoritative entity source used by overlay export and preview."""
     cfg = _cfg(config)
     writer = DxfWriter()
     warnings = list(landxml.warnings)
@@ -526,14 +549,39 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
             nx = -ty * lane_sign
             ny = tx * lane_sign
             ux, uy, rotation = _upright_text_axis(nx, ny)
+            station_label = _overlay_station_label(row, curve)
+            callout_preview = {
+                "group_id": f"curve-{curve_index}-row-{row_index}",
+                "curve_index": curve_index,
+                "curve_name": str(meta.get("curve_name", row["curve_name"])),
+                "station": str(row["station_label"]),
+                "station_ft": station,
+                "side": lane_side,
+                "slope": str(row["slope_label"]),
+                "event_type": str(row["event_type"]),
+            }
 
             elbow_x = x + nx * float(cfg["tick_length"])
             elbow_y = y + ny * float(cfg["tick_length"])
             end_x = label_x + nx * float(cfg["overlay_label_offset"])
             end_y = label_y + ny * float(cfg["overlay_label_offset"])
-            writer.add_line(x, y, elbow_x, elbow_y, cfg["layers"]["overlay_leader"])
+            writer.add_line(
+                x,
+                y,
+                elbow_x,
+                elbow_y,
+                cfg["layers"]["overlay_leader"],
+                preview=callout_preview,
+            )
             if math.hypot(end_x - elbow_x, end_y - elbow_y) > 0.001:
-                writer.add_line(elbow_x, elbow_y, end_x, end_y, cfg["layers"]["overlay_leader"])
+                writer.add_line(
+                    elbow_x,
+                    elbow_y,
+                    end_x,
+                    end_y,
+                    cfg["layers"]["overlay_leader"],
+                    preview=callout_preview,
+                )
 
             cross_x = -uy
             cross_y = ux
@@ -548,12 +596,13 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
             writer.add_text(
                 station_x,
                 station_y,
-                _overlay_station_label(row, curve),
+                station_label,
                 cfg["text_height"],
                 cfg["layers"]["overlay_station"],
                 rotation=rotation,
                 alignment=text_alignment,
                 text_style=cfg["overlay_text_style"],
+                preview=callout_preview,
             )
             writer.add_text(
                 slope_x,
@@ -564,6 +613,7 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
                 rotation=rotation,
                 alignment=text_alignment,
                 text_style=cfg["overlay_text_style"],
+                preview=callout_preview,
             )
 
             if not curve_title_drawn:
@@ -572,6 +622,11 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
                 title_x_axis, title_y_axis, title_rotation = _upright_text_axis(tx, ty)
                 title_x = text_anchor_x + nx * cfg["overlay_title_offset"]
                 title_y = text_anchor_y + ny * cfg["overlay_title_offset"]
+                title_preview = {
+                    "group_id": f"curve-{curve_index}-title",
+                    "curve_index": curve_index,
+                    "curve_name": str(meta.get("curve_name", row["curve_name"])),
+                }
                 writer.add_text(
                     title_x,
                     title_y,
@@ -581,6 +636,7 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
                     rotation=title_rotation,
                     alignment="LEFT",
                     text_style=cfg["overlay_text_style"],
+                    preview=title_preview,
                 )
                 if radius is not None:
                     # Stack the radius on the next readable line beneath the
@@ -596,6 +652,7 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
                         rotation=title_rotation,
                         alignment="LEFT",
                         text_style=cfg["overlay_text_style"],
+                        preview=title_preview,
                     )
                 curve_title_drawn = True
 
@@ -603,10 +660,105 @@ def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_
     for warning in warnings:
         if warning not in unique_warnings:
             unique_warnings.append(warning)
+    return writer, cfg, unique_warnings
+
+
+def _preview_text_corners(record: tuple) -> list[tuple[float, float]]:
+    _, x, y, text, height, _layer, rotation, alignment, _text_style = record
+    width = len(text) * height * 0.62
+    x_start, x_end = (-width, 0.0) if alignment == "RIGHT" else (0.0, width)
+    angle = math.radians(rotation)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+    corners = []
+    for local_x, local_y in ((x_start, 0.0), (x_end, 0.0), (x_end, height), (x_start, height)):
+        corners.append((x + local_x * cosine - local_y * sine, y + local_x * sine + local_y * cosine))
+    return corners
+
+
+def overlay_preview_model(
+    curves: Iterable[dict],
+    landxml: super_landxml.LandXMLData,
+    config: dict | None = None,
+) -> dict:
+    writer, cfg, warnings = build_overlay_drawing(curves, landxml, config)
+    entities: list[dict] = []
+    points: list[tuple[float, float]] = []
+    used_layers: set[str] = set()
+
+    for index, record in enumerate(writer._records):
+        preview_metadata = writer._preview_metadata.get(index)
+        preview = dict(preview_metadata) if preview_metadata is not None else None
+        if record[0] == "LINE":
+            _, x1, y1, x2, y2, layer = record
+            entity = {
+                "id": index,
+                "type": "LINE",
+                "layer": layer,
+                "x1": x1,
+                "y1": y1,
+                "x2": x2,
+                "y2": y2,
+                "preview": preview,
+            }
+            points.extend(((x1, y1), (x2, y2)))
+        else:
+            _, x, y, text, height, layer, rotation, alignment, text_style = record
+            entity = {
+                "id": index,
+                "type": "TEXT",
+                "layer": layer,
+                "x": x,
+                "y": y,
+                "text": text,
+                "height": height,
+                "rotation": rotation,
+                "alignment": alignment,
+                "text_style": text_style,
+                "preview": preview,
+            }
+            points.extend(_preview_text_corners(record))
+        entities.append(entity)
+        used_layers.add(layer)
+
+    layer_styles = cfg.get("overlay_layer_styles", {})
+    layers = {
+        layer: {
+            "color": int(style.get("color", 7)),
+            "linetype": str(style.get("linetype", "CONTINUOUS")),
+            "lineweight": int(style.get("lineweight", -3)),
+        }
+        for layer, style in layer_styles.items()
+    }
+    for layer in sorted(used_layers - layers.keys()):
+        layers[layer] = {"color": 7, "linetype": "CONTINUOUS", "lineweight": -3}
+    if points:
+        xs, ys = zip(*points)
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+    else:
+        min_x = min_y = 0.0
+        max_x = max_y = 1.0
+    if max_x <= min_x:
+        max_x = min_x + 1.0
+    if max_y <= min_y:
+        max_y = min_y + 1.0
+
+    return {
+        "background": "#101010",
+        "entities": entities,
+        "layers": layers,
+        "bounds": {"min_x": min_x, "min_y": min_y, "max_x": max_x, "max_y": max_y},
+        "warnings": warnings,
+    }
+
+
+def export_overlay_dxf(path: str | Path, curves: Iterable[dict], landxml: super_landxml.LandXMLData, config: dict | None = None) -> list[str]:
+    writer, cfg, warnings = build_overlay_drawing(curves, landxml, config)
     writer.save(
         path,
         dxf_insunits(landxml.linear_unit),
         cfg.get("overlay_layer_styles"),
         cfg.get("overlay_text_styles"),
     )
-    return unique_warnings
+    return warnings

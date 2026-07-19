@@ -52,6 +52,7 @@ test("ships the Python worker and shared runtime manifest", async () => {
   assert.match(worker, /PYODIDE_VERSION = "0\.29\.4"/);
   assert.match(worker, /reportlab==4\.4\.7/);
   assert.match(worker, /ezdxf==1\.4\.4/);
+  assert.match(worker, /super_service\.dispatch_safe/);
   assert.match(manifest, /super_service\.py/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
 });
@@ -76,6 +77,8 @@ test("opens a save picker for exports with a download fallback", async () => {
   assert.match(source, /suggestedName: name/);
   assert.match(source, /createWritable/);
   assert.match(source, /if \(!picker\) return "download"/);
+  assert.match(source, /Superelevation project/);
+  assert.match(source, /Project \$\{outcome\}/);
   assert.doesNotMatch(source, />Detail DXF</);
 });
 
@@ -91,4 +94,64 @@ test("uses the dark engineering workspace theme", async () => {
   assert.match(css, /color-scheme: dark/);
   assert.match(css, /--paper: #07100e/);
   assert.match(css, /\.lookup-card/);
+});
+
+test("shows concise guidance for invalid project files", async () => {
+  const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /Use Select LandXML to open XML alignment files/);
+  assert.match(source, /The selected project file is empty/);
+});
+
+test("ships interactive diagram zoom and corridor QA controls", async () => {
+  const source = await readFile(new URL("../app/SuperelevationAnalysis.tsx", import.meta.url), "utf8");
+  const planSource = await readFile(new URL("../app/SuperelevationPlanView.tsx", import.meta.url), "utf8");
+  const appSource = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /addEventListener\("wheel", wheelZoom, \{ passive: false \}\)/);
+  assert.match(source, /event\.preventDefault\(\)/);
+  assert.match(source, /Pan toward corridor start/);
+  assert.match(source, /onPointerMove={movePan}/);
+  assert.match(source, /onClick={selectPoint}/);
+  assert.match(source, /Array\.from\(\{ length: 721 \}/);
+  assert.match(source, /Math\.min\(\(activeDomain\[1\] - activeDomain\[0\]\).*5\)/);
+  assert.match(source, /Open large analysis view/);
+  assert.match(source, /Plan View/);
+  assert.match(planSource, /plan\.entities/);
+  assert.match(planSource, /entity\.type === "LINE"/);
+  assert.match(planSource, /entity\.type === "TEXT"/);
+  assert.match(planSource, /rotate\(/);
+  assert.match(planSource, /textAnchor/);
+  assert.match(planSource, /cadColor/);
+  assert.match(planSource, /selectedGroup/);
+  assert.match(planSource, /const payloadKey = JSON\.stringify/);
+  assert.match(planSource, /plan\.bounds/);
+  assert.match(planSource, /plan\.entities/);
+  assert.match(planSource, /<PlanCanvas key={payloadKey}/);
+  assert.match(planSource, /plan\.errors\.map|plan\.errors \|\| \[\]/);
+  assert.match(planSource, /plan\.warnings\.map|plan\.warnings \|\| \[\]/);
+  assert.match(planSource, /cadFontFamily\(entity\.text_style\)/);
+  assert.match(planSource, /\["ENGINEERING REGULAR", "ENGINEERING"\]\.includes\(normalized\)/);
+  assert.match(planSource, /Arial Narrow/);
+  assert.doesNotMatch(source, /plan\.events/);
+  assert.match(planSource, /getScreenCTM\(\)/);
+  assert.match(planSource, /matrix\.inverse\(\)/);
+  assert.match(planSource, /clientPointToDrawing/);
+  assert.match(planSource, /className="cad-hit-target"/);
+  assert.match(planSource, /pointerEvents="stroke"/);
+  assert.doesNotMatch(planSource, /className="plan-event/);
+  assert.doesNotMatch(planSource, /plan\.curve_paths/);
+  assert.match(planSource, /addEventListener\("wheel", wheelZoom, \{ passive: false \}\)/);
+  assert.match(planSource, /onPointerMove={movePan}/);
+  assert.match(source, /diagrams\.flatMap/);
+  assert.match(appSource, /No LandXML curve selected/);
+  assert.match(appSource, /excluded_landxml_curve_indexes/);
+  assert.match(appSource, /const removeCurve/);
+  assert.match(appSource, /index === selectedCurve/);
+  assert.match(appSource, /results: calculation\.results/);
+  assert.match(source, /Zoom in/);
+  assert.match(source, /Reset zoom/);
+  assert.match(source, /Snap events/);
+  assert.match(source, /Corridor QA/);
+  assert.match(appSource, /diagram_lookup/);
+  assert.match(appSource, /corridor_diagram/);
+  assert.match(appSource, /plan_view/);
 });

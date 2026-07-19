@@ -99,6 +99,17 @@ def normalize_project(data: dict[str, Any]) -> dict[str, Any]:
 
     legacy = version < PROJECT_VERSION
     landxml_source = normalize_landxml_source(data.get("landxml_source"))
+    raw_excluded = data.get("excluded_landxml_curve_indexes", []) or []
+    if not isinstance(raw_excluded, list):
+        raise ProjectFormatError("Project 'excluded_landxml_curve_indexes' must be a list.")
+    excluded_curve_indexes: set[int] = set()
+    for index in raw_excluded:
+        try:
+            normalized_index = int(index)
+        except (TypeError, ValueError) as exc:
+            raise ProjectFormatError("Excluded LandXML curve indexes must be integers.") from exc
+        if normalized_index >= 0:
+            excluded_curve_indexes.add(normalized_index)
     return {
         "version": PROJECT_VERSION,
         "source_version": version,
@@ -112,6 +123,7 @@ def normalize_project(data: dict[str, Any]) -> dict[str, Any]:
         "last_meta": data.get("last_meta", {}) or {},
         "project_notes": data.get("project_notes", ""),
         "landxml_source": landxml_source,
+        "excluded_landxml_curve_indexes": sorted(excluded_curve_indexes),
     }
 
 
