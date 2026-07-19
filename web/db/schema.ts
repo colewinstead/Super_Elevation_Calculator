@@ -47,3 +47,20 @@ export const stripeEvents = sqliteTable("stripe_events", {
   eventCreated: integer("event_created").notNull(),
   processedAt: text("processed_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const manualEntitlements = sqliteTable("manual_entitlements", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  plan: text("plan").notNull().default("pro"),
+  reason: text("reason").notNull(),
+  expiresAt: integer("expires_at"),
+  grantedBy: text("granted_by").notNull(),
+  grantedAt: text("granted_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  revokedAt: text("revoked_at"),
+  revokedBy: text("revoked_by"),
+  termsVersion: text("terms_version").notNull(),
+  privacyVersion: text("privacy_version").notNull(),
+}, (table) => [
+  index("manual_entitlements_user_idx").on(table.userId),
+  index("manual_entitlements_granted_at_idx").on(table.grantedAt),
+]);

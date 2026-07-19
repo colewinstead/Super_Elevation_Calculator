@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveBillingAccess } from "../lib/billing/entitlement-policy.ts";
 import { billingUserId } from "../lib/billing/identity.ts";
+import { resolveManualAccess } from "../lib/billing/manual-entitlement-policy.ts";
 
 const now = 2_000_000_000;
 
@@ -69,4 +70,22 @@ test("Billing identity follows the WorkOS subject instead of a changeable email 
   const otherAccount = { ...renamed, subject: "user_01JXYZ789" };
   assert.equal(await billingUserId(original), await billingUserId(renamed));
   assert.notEqual(await billingUserId(original), await billingUserId(otherAccount));
+});
+
+test("Active manual grants provide Pro with the same bounded offline window", () => {
+  assert.deepEqual(resolveManualAccess({ revokedAt: null, expiresAt: null }, now), {
+    plan: "pro",
+    status: "active",
+    offlineExpiresAt: now + 7 * 86400,
+  });
+  assert.deepEqual(resolveManualAccess({ revokedAt: null, expiresAt: now + 86400 }, now), {
+    plan: "pro",
+    status: "active",
+    offlineExpiresAt: now + 86400,
+  });
+});
+
+test("Revoked and expired manual grants do not override subscription access", () => {
+  assert.equal(resolveManualAccess({ revokedAt: "2026-07-19T00:00:00Z", expiresAt: null }, now), null);
+  assert.equal(resolveManualAccess({ revokedAt: null, expiresAt: now }, now), null);
 });

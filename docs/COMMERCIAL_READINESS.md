@@ -47,7 +47,7 @@ Use `python scripts/create_pilot_evidence_bundle.py --output <private-directory>
 - Product telemetry or automatic diagnostic uploads.
 - A broad Windows/macOS/ORD compatibility matrix.
 - Spiral workflows when pilot screening explicitly excludes spirals.
-- A general-purpose entitlement administration portal.
+- Multi-administrator roles, bulk entitlement tools, and a general-purpose enterprise entitlement portal.
 
 ## Responsibility and private approval
 
@@ -121,5 +121,6 @@ Future support bundles are explicit and opt-in. They may contain application/eng
 - Accessible, feature-specific upgrade messages that preserve work.
 - Browser-first homepage, supported-DOT section, plan comparison, and honest desktop Coming soon status.
 - Branded WorkOS AuthKit sign-in for paid accounts, Stripe-hosted Checkout and customer portal routes, a signature-verified webhook, D1 subscription records, and signed offline entitlement snapshots.
+- Owner-only complimentary Pro administration with stable-ID authorization, optional expiration, revocation, and a retained grant history.
 - Clean public Terms and Privacy routes with private attorney material excluded from the repository.
 - No live keys, production charging, trials, promotion codes, card-data handling, Team administration, or desktop entitlement activation.

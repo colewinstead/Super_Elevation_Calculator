@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { signOut } from "@workos-inc/authkit-nextjs";
 import { getProductUser } from "../product-auth";
+import { isProductAdmin } from "@/lib/auth/admin";
 import AccountClient from "./AccountClient";
 
 export const metadata: Metadata = { title: "Account and Billing" };
@@ -18,7 +19,7 @@ export default async function AccountPage({
     <main className="account-shell">
       <nav className="legal-nav" aria-label="Account navigation">
         <Link href="/">Superelevation Calculator</Link>
-        <div><Link href="/calculator">Calculator</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link>{user && <form action={async () => { "use server"; await signOut({ returnTo: "/" }); }}><button className="legal-nav-button" type="submit">Sign out</button></form>}</div>
+        <div><Link href="/calculator">Calculator</Link><Link href="/terms">Terms</Link><Link href="/privacy">Privacy</Link>{user && isProductAdmin(user) && <Link href="/admin">Admin</Link>}{user && <form action={async () => { "use server"; await signOut({ returnTo: "/" }); }}><button className="legal-nav-button" type="submit">Sign out</button></form>}</div>
       </nav>
       <header className="account-heading"><p className="marketing-eyebrow"><span /> Named-user access</p><h1>Account & billing</h1><p>Identity and entitlement are verified online. Engineering work remains local.</p></header>
       {user

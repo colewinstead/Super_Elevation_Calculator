@@ -128,6 +128,35 @@ test("uses WorkOS identity without coupling billing access to email", async () =
   assert.doesNotMatch(`${productAuth}${proxy}${signIn}${callback}`, /oai-authenticated|signin-with-chatgpt|getChatGPTUser/i);
 });
 
+test("protects complimentary Pro administration with a stable WorkOS allowlist", async () => {
+  const [page, client, route, adminAuth, entitlementRoute, accountPage, accountClient] = await Promise.all([
+    readFile(new URL("../app/admin/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/AdminEntitlementsClient.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/entitlements/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/auth/admin.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/entitlement/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/account/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/account/AccountClient.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /isProductAdmin/);
+  assert.match(page, /redirect\("\/login\?return_to=%2Fadmin"\)/);
+  assert.match(client, /Grant complimentary Pro/);
+  assert.match(client, /Revoke manual Pro/);
+  assert.match(client, /customer Terms and Privacy acceptance is already on file/i);
+  assert.match(route, /requireSameOrigin/);
+  assert.match(route, /acceptance_confirmed/);
+  assert.match(route, /grantManualPro/);
+  assert.match(route, /revokeManualPro/);
+  assert.match(adminAuth, /ADMIN_WORKOS_USER_IDS/);
+  assert.match(adminAuth, /user\.subject/);
+  assert.doesNotMatch(adminAuth, /user\.email/);
+  assert.match(entitlementRoute, /manual-grant/);
+  assert.match(entitlementRoute, /manualAccess \? "manual-grant" : "subscription-ledger"/);
+  assert.match(accountPage, /isProductAdmin\(user\).*href="\/admin"/s);
+  assert.match(accountClient, /Complimentary Pro/);
+  assert.match(accountClient, /isPro && account\.billing\.subscription_status/);
+});
+
 test("payment activation is webhook-driven and does not grant from the success redirect", async () => {
   const [checkout, webhook, account, remoteEntitlement] = await Promise.all([
     readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8"),

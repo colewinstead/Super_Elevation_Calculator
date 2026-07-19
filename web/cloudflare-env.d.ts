@@ -5,6 +5,7 @@ declare namespace Cloudflare {
     WORKOS_CLIENT_ID?: string;
     WORKOS_COOKIE_PASSWORD?: string;
     NEXT_PUBLIC_WORKOS_REDIRECT_URI?: string;
+    ADMIN_WORKOS_USER_IDS?: string;
     STRIPE_SECRET_KEY?: string;
     STRIPE_WEBHOOK_SECRET?: string;
     STRIPE_PRO_PRICE_ID?: string;

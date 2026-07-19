@@ -2,17 +2,19 @@ import commercialManifest from "@/app/generated/commercial-manifest.json";
 import { getProductUser } from "@/app/product-auth";
 import { billingConfigurationStatus } from "@/lib/billing/config";
 import { resolveBillingAccess } from "@/lib/billing/entitlement-policy";
+import { resolveManualAccess } from "@/lib/billing/manual-entitlement-policy";
+import { getActiveManualEntitlement } from "@/lib/billing/manual-entitlements";
 import { signEntitlementSnapshot } from "@/lib/billing/entitlement-token";
 import { billingUserId } from "@/lib/billing/identity";
 import { getSubscriptionForUser, upsertBillingUser } from "@/lib/billing/store";
 
 export const dynamic = "force-dynamic";
 
-function snapshotFor(plan: "free" | "pro", status: "active" | "grace", offlineExpiresAt: number) {
+function snapshotFor(plan: "free" | "pro", status: "active" | "grace", offlineExpiresAt: number, source = "subscription-ledger") {
   return {
     plan,
     capabilities: [...commercialManifest.plans[plan].capabilities],
-    source: "subscription-ledger",
+    source,
     status,
     browser_grace_days: commercialManifest.browser_grace_days,
     desktop_grace_days: commercialManifest.desktop_grace_days,
@@ -36,9 +38,11 @@ export async function GET() {
   try {
     const id = await billingUserId(user);
     await upsertBillingUser({ id, email: user.email, displayName: user.displayName, identityProvider: user.provider, identitySubject: user.subject });
+    const manualGrant = await getActiveManualEntitlement(id, now);
     const subscription = await getSubscriptionForUser(id);
-    const access = resolveBillingAccess(subscription, now, commercialManifest.browser_grace_days);
-    const entitlement = snapshotFor(access.plan, access.status, access.offlineExpiresAt);
+    const manualAccess = resolveManualAccess(manualGrant, now, commercialManifest.browser_grace_days);
+    const access = manualAccess ?? resolveBillingAccess(subscription, now, commercialManifest.browser_grace_days);
+    const entitlement = snapshotFor(access.plan, access.status, access.offlineExpiresAt, manualAccess ? "manual-grant" : "subscription-ledger");
     let entitlementToken: string | undefined;
     try {
       entitlementToken = await signEntitlementSnapshot(entitlement);
@@ -55,6 +59,7 @@ export async function GET() {
         subscription_status: subscription?.status ?? null,
         current_period_end: subscription?.currentPeriodEnd ?? null,
         cancel_at_period_end: subscription?.cancelAtPeriodEnd ?? false,
+        manual_grant_expires_at: manualGrant?.expiresAt ?? null,
       },
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {

@@ -7,7 +7,7 @@ import { PRIVACY_VERSION, PRO_PRICE, TERMS_VERSION } from "@/lib/billing/legal";
 type AccountState = {
   signed_in: boolean;
   user?: { display_name: string };
-  entitlement: { plan: "free" | "pro" | "team"; status: string };
+  entitlement: { plan: "free" | "pro" | "team"; status: string; source?: string };
   billing: {
     configured: boolean;
     mode: "test" | "live";
@@ -15,6 +15,7 @@ type AccountState = {
     subscription_status?: string | null;
     current_period_end?: number | null;
     cancel_at_period_end?: boolean;
+    manual_grant_expires_at?: number | null;
   };
 };
 
@@ -86,8 +87,10 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
 
   if (!account) return <div className="account-loading" role="status">Checking account and entitlement…</div>;
   const isPro = account.entitlement.plan === "pro" || account.entitlement.plan === "team";
-  const periodEnd = account.billing.current_period_end
-    ? new Date(account.billing.current_period_end * 1000).toLocaleDateString()
+  const isManual = account.entitlement.source === "manual-grant";
+  const accessEnd = isManual ? account.billing.manual_grant_expires_at : account.billing.current_period_end;
+  const periodEnd = accessEnd
+    ? new Date(accessEnd * 1000).toLocaleDateString()
     : null;
 
   return (
@@ -101,10 +104,11 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
         <dl>
           <div><dt>Plan</dt><dd>{account.entitlement.plan.toUpperCase()}</dd></div>
           <div><dt>Entitlement</dt><dd>{account.entitlement.status}</dd></div>
+          {isManual && <div><dt>Access</dt><dd>Complimentary Pro</dd></div>}
           {account.billing.subscription_status && <div><dt>Subscription</dt><dd>{account.billing.subscription_status}</dd></div>}
           {account.billing.cancel_at_period_end && <div><dt>Renewal</dt><dd>Cancels after paid period</dd></div>}
         </dl>
-        {isPro && <button className="marketing-button primary-action" onClick={manageBilling} disabled={Boolean(busy)}>{busy || "Manage billing"}</button>}
+        {isPro && account.billing.subscription_status && <button className="marketing-button primary-action" onClick={manageBilling} disabled={Boolean(busy)}>{busy || "Manage billing"}</button>}
       </section>
 
       {!isPro && <section className="account-card checkout-card">

@@ -18,9 +18,11 @@ export default function proxy(request: NextRequest, event: NextFetchEvent) {
 export const config = {
   matcher: [
     "/account/:path*",
+    "/admin/:path*",
     "/login",
     "/auth/:path*",
     "/api/entitlement",
+    "/api/admin/:path*",
     "/api/billing/:path*",
   ],
 };
