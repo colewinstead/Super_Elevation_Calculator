@@ -47,6 +47,26 @@ assert.deepEqual(
 assert.ok(calculation.lanes.left.length > 0);
 assert.ok(calculation.lanes.right.length > 0);
 
+const tdotPayload = JSON.stringify({
+  inputs: {
+    criteria_profile: "tdot-rd11-2026-04-30",
+    pc: "10+00", pt: "20+00", speed: "50", radius: "2280",
+    facility: "undivided", area: "rural", lane_width: "12",
+    lanes_rotated: "2", normal_crown: "0.02", curve_direction: "left",
+  },
+});
+pyodide.globals.set("tdot_payload", tdotPayload);
+const tdotProxy = pyodide.runPython(`super_service.dispatch("calculate", tdot_payload)`);
+const tdot = tdotProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+tdotProxy.destroy();
+assert.equal(tdot.results.calculation_metadata.criteria.profile_id, "tdot-rd11-2026-04-30");
+assert.deepEqual(
+  { e: tdot.results.e, Lr: tdot.results.Lr },
+  { e: 0.046, Lr: 110 },
+);
+assert.ok(tdot.lanes.left.length > 0);
+assert.ok(tdot.lanes.right.length > 0);
+
 pyodide.globals.set("results_payload", JSON.stringify({
   curves: [{ results: calculation.results, meta: { curve_direction: "right" }, notes: "" }],
 }));

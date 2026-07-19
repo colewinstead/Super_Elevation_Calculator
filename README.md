@@ -29,7 +29,7 @@ Superelevation Calculator turns roadway curve inputs and LandXML alignments into
 
 | Calculate | Review | Export |
 |:--|:--|:--|
-| MDOT-style curve calculations | Lane-by-lane slopes and stations | PDF calculation reports |
+| Versioned MDOT and TDOT criteria profiles | Lane-by-lane slopes and stations | PDF calculation reports |
 | Normal crown and full super cases | Project, route, alignment, and curve metadata | ORD-compatible CSV |
 | Station equations | LandXML geometry validation | Real-coordinate overlay DXF |
 | East/West coordinate transforms | Actionable export warnings | Reusable project JSON |
@@ -63,7 +63,7 @@ Download the latest Windows executable or native macOS disk image from [GitHub R
 
 Requires Python 3.11 or newer.
 
-The current application release is **1.4.2** and the calculation-engine release is **1.0.0**. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+The current application release is **1.4.3** and the calculation-engine release is **1.1.0**. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
 
 ```powershell
 git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
@@ -128,7 +128,7 @@ The DXF is a graphics handoff, not a native Bentley civil model.
 ## Engineering notes
 
 > [!CAUTION]
-> The legacy calculation criteria currently carry the profile ID `mdot-legacy-unverified`. Table and sheet identifiers are present in the code, but the governing publication title, revision, effective date, and value-by-value traceability have not yet been verified. This is a paid-pilot blocker until a qualified roadway engineer approves the criteria matrix and golden calculations. See [`docs/PAID_PILOT_READINESS.md`](docs/PAID_PILOT_READINESS.md).
+> Calculations record the selected criteria profile and source revision. The default `mdot-rdsd-2026-04-22` profile preserves the existing MDOT behavior. The `tdot-rd11-2026-04-30` profile uses TDOT RD11-LR-1's desirable 4% urban table, RD11-LR-2's desirable 8% rural table, and RD11-SE-1 transition equations for undivided-roadway lane events. It also records the RD11 typical-section catalog as supporting design criteria; width, grade, sight-distance fields, and divided-roadway lane geometry are not automatically modeled. Source transcription does not replace independent engineering review or approval of golden calculations. See [`docs/PAID_PILOT_READINESS.md`](docs/PAID_PILOT_READINESS.md).
 
 <details>
 <summary><strong>ORD import checklist</strong></summary>
@@ -176,6 +176,7 @@ LandXML points are interpreted as Northing/Easting and written to CAD as X=Easti
 | [`super_project.py`](super_project.py) | Project save/load support |
 | [`app_info.py`](app_info.py) | Authoritative application and engine versions |
 | [`criteria_info.py`](criteria_info.py) | Criteria/source traceability metadata |
+| [`tdot_criteria.py`](tdot_criteria.py) | Versioned TDOT RD11 radius, gradient, and lane-factor tables |
 | [`app_logging.py`](app_logging.py) | Per-user rotating diagnostic logging |
 | [`web`](web) | Browser-only React interface and Pyodide worker |
 

@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 import Super
 from app_info import APP_NAME, APP_VERSION, CALCULATION_ENGINE_VERSION
-from criteria_info import criteria_metadata
+from criteria_info import MDOT_PROFILE_ID, criteria_metadata, criteria_profiles, normalize_profile_id
 import super_batch
 import super_dxf
 import super_exports
@@ -22,6 +22,7 @@ import super_project
 
 
 DEFAULT_INPUTS = {
+    "criteria_profile": MDOT_PROFILE_ID,
     "curve_direction": "left",
     "facility": "centerline",
     "area": "rural",
@@ -39,13 +40,28 @@ def application_manifest() -> dict[str, Any]:
         "calculation_engine_version": CALCULATION_ENGINE_VERSION,
         "project_schema_version": super_project.PROJECT_VERSION,
         "criteria": criteria_metadata(),
+        "criteria_profiles": criteria_profiles(),
         "defaults": dict(DEFAULT_INPUTS),
         "options": {
             "curve_direction": ["left", "right"],
             "facility": ["centerline", "outside edge"],
+            "tdot_facility": ["undivided"],
             "area": ["rural", "urban", "local"],
             "speed": [str(value) for value in range(15, 85, 5)],
             "coordinate_systems": list(super_dxf.MDOT_COORDINATE_SYSTEMS),
+            "profiles": {
+                MDOT_PROFILE_ID: {
+                    "facility": ["centerline", "outside edge"],
+                    "area": ["rural", "urban", "local"],
+                    "speed": [str(value) for value in range(15, 85, 5)],
+                },
+                "tdot-rd11-2026-04-30": {
+                    "facility": ["undivided"],
+                    "area": ["rural", "urban"],
+                    "speed": [str(value) for value in range(20, 75, 5)],
+                    "urban_speed": [str(value) for value in range(20, 65, 5)],
+                },
+            },
         },
     }
 
@@ -84,8 +100,13 @@ def _station_range(value: Any) -> tuple[float, float] | None:
 def calculate_curve(inputs: dict[str, Any]) -> dict[str, Any]:
     """Calculate one curve and return structured presentation data."""
     values = {**DEFAULT_INPUTS, **(inputs or {})}
+    profile_id = normalize_profile_id(str(values.get("criteria_profile", MDOT_PROFILE_ID)))
     area = str(values.get("area", "rural"))
-    facility = "centerline" if area.lower().startswith("local") else str(values.get("facility", "centerline"))
+    facility = (
+        "centerline"
+        if profile_id == MDOT_PROFILE_ID and area.lower().startswith("local")
+        else str(values.get("facility", "centerline"))
+    )
     arguments = (
         str(values.get("pc", "")),
         str(values.get("pt", "")),
@@ -103,6 +124,7 @@ def calculate_curve(inputs: dict[str, Any]) -> dict[str, Any]:
         str(values.get("Lt_manual", "")),
         _station_equations(values.get("station_equations")),
         _station_range(values.get("alignment_station_range")),
+        profile_id,
     )
     results = Super.calculate_superelevation(*arguments)
     baseline_arguments = list(arguments)
@@ -260,14 +282,23 @@ def _temporary_export(suffix: str, exporter: Callable[[str], Any]) -> tuple[byte
             os.unlink(path)
 
 
+def _calculation_warnings(curves: list[dict]) -> list[str]:
+    warnings: list[str] = []
+    for curve in curves:
+        for warning in (curve.get("results", {}) or {}).get("warnings", []) or []:
+            if warning not in warnings:
+                warnings.append(str(warning))
+    return warnings
+
+
 def export_pdf(curves: list[dict]) -> dict[str, Any]:
     content, warnings = _temporary_export(".pdf", lambda path: super_pdf.export_pdf(path, curves))
-    return {"content": content, "warnings": warnings}
+    return {"content": content, "warnings": list(dict.fromkeys(warnings + _calculation_warnings(curves)))}
 
 
 def export_detail_dxf(curves: list[dict]) -> dict[str, Any]:
     content, warnings = _temporary_export(".dxf", lambda path: super_dxf.export_detail_dxf(path, curves))
-    return {"content": content, "warnings": warnings}
+    return {"content": content, "warnings": list(dict.fromkeys(warnings + _calculation_warnings(curves)))}
 
 
 def export_overlay_dxf(
@@ -283,7 +314,10 @@ def export_overlay_dxf(
     content, warnings = _temporary_export(
         ".dxf", lambda path: super_dxf.export_overlay_dxf(path, curves, data, coordinate_config)
     )
-    return {"content": content, "warnings": list(dict.fromkeys(diagnostic_warnings + warnings))}
+    return {
+        "content": content,
+        "warnings": list(dict.fromkeys(diagnostic_warnings + warnings + _calculation_warnings(curves))),
+    }
 
 
 def dispatch(operation: str, payload_json: str = "{}") -> Any:
