@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
+import { register } from "node:module";
 import test from "node:test";
+
+register("./cloudflare-loader.mjs", import.meta.url);
 
 async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -18,10 +21,19 @@ test("renders the product homepage without starting the calculation runtime", as
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Superelevation Calculator \| Roadway Design Toolkit/i);
-  assert.match(html, /From roadway curve/i);
-  assert.match(html, /Download EXE/i);
-  assert.match(html, /SuperelevationCalculator-macOS-Apple-Silicon\.dmg/i);
-  assert.match(html, /SuperelevationCalculator-macOS-Intel\.dmg/i);
+  assert.match(html, /Professional superelevation/i);
+  assert.match(html, /DOTs supported/i);
+  assert.match(html, /Mississippi Department of Transportation/i);
+  assert.match(html, /Tennessee Department of Transportation/i);
+  assert.match(html, /Free, Pro, and Team capability comparison/i);
+  assert.match(html, /Book a Team pilot/i);
+  assert.match(html, /\$29\/month/i);
+  assert.match(html, /No engineering-file uploads/i);
+  assert.match(html, /licensed professional responsible for the project/i);
+  assert.doesNotMatch(html, /<form/i);
+  assert.match(html, /Desktop editions are coming soon/i);
+  assert.match(html, /Coming soon/i);
+  assert.doesNotMatch(html, /Download EXE|SuperelevationCalculator-macOS-Apple-Silicon\.dmg|SuperelevationCalculator-macOS-Intel\.dmg/i);
   assert.match(html, /http:\/\/localhost\/og\.png/i);
   await access(new URL("../public/og.png", import.meta.url));
   assert.match(html, /Browser UI/i);
@@ -44,15 +56,148 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.equal(response.status, 200);
   const html = await response.text();
   const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  const upgradeSource = await readFile(new URL("../app/UpgradeNotice.tsx", import.meta.url), "utf8");
   assert.match(html, /<title>Browser Calculator \| Superelevation Calculator<\/title>/i);
   assert.match(html, /CalculatorApp-[^"']+\.js/i);
   assert.match(source, /Private browser engine/i);
   assert.match(source, /Select LandXML/i);
   assert.match(source, /Curve inputs/i);
   assert.match(source, /Review & export/i);
+  assert.match(source, /Load synthetic sample/i);
+  assert.match(source, /Local test plan/i);
+  assert.match(source, /setLocalDevelopment\(hasLocalEntitlementOverride\(\)\)/);
+  assert.match(source, /const proChip = \(capability: string\) => allows\(entitlement, capability\)/);
+  assert.match(source, /PRO\} access|TOUPPERCASE\(\).*access/i);
+  assert.match(source, /requestCapability/i);
+  assert.match(upgradeSource, /role="dialog"/i);
+  assert.match(upgradeSource, /aria-modal="true"/i);
+  assert.match(upgradeSource, /Your current inputs, results, and project state are unchanged/i);
+  assert.match(upgradeSource, /Keep calculating/i);
+  assert.match(upgradeSource, /target="_blank"/i);
   assert.match(source, /preserves the LandXML XY coordinates without reprojection/i);
   assert.doesNotMatch(source, /Destination CRS|targetCrs|coordinate_config/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+});
+
+test("renders public legal pages and branded signed-out account access", async () => {
+  const [termsResponse, privacyResponse, accountResponse, loginResponse] = await Promise.all([
+    render("/terms"),
+    render("/privacy"),
+    render("/account"),
+    render("/login"),
+  ]);
+  assert.equal(termsResponse.status, 200);
+  assert.equal(privacyResponse.status, 200);
+  assert.equal(accountResponse.status, 200);
+  assert.equal(loginResponse.status, 200);
+  const [terms, privacy, account, login] = await Promise.all([
+    termsResponse.text(),
+    privacyResponse.text(),
+    accountResponse.text(),
+    loginResponse.text(),
+  ]);
+  assert.match(terms, /\$29 USD per month/i);
+  assert.match(terms, /renews automatically/i);
+  assert.match(terms, /nonrefundable/i);
+  assert.match(terms, /licensed professional responsible for the project/i);
+  assert.match(privacy, /not automatically uploaded/i);
+  assert.match(privacy, /Stripe directly processes/i);
+  assert.match(privacy, /Provider and WorkOS process/i);
+  assert.match(account, /Sign in to manage Pro/i);
+  assert.match(account, /Sign in securely/i);
+  assert.match(account, /Keep calculating free/i);
+  assert.match(login, /Sign in to Superelevation Calculator/i);
+  assert.match(login, /work email, Microsoft account, or Google account/i);
+  assert.match(login, /Sign-in setup is in progress/i);
+  assert.match(login, /Engineering files and calculations stay on this device/i);
+  assert.doesNotMatch(`${account}${login}`, /ChatGPT|OpenAI account|Sign in with WorkOS/i);
+});
+
+test("uses WorkOS identity without coupling billing access to email", async () => {
+  const [productAuth, proxy, signIn, callback, identity] = await Promise.all([
+    readFile(new URL("../app/product-auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../proxy.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth/sign-in/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/auth/callback/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/billing/identity.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(productAuth, /withAuth/);
+  assert.match(productAuth, /provider: "workos"/);
+  assert.match(proxy, /authkitProxy/);
+  assert.match(signIn, /getSignInUrl/);
+  assert.match(callback, /handleAuth/);
+  assert.match(identity, /user\.provider.*user\.subject/s);
+  assert.doesNotMatch(identity, /user\.email/);
+  assert.doesNotMatch(`${productAuth}${proxy}${signIn}${callback}`, /oai-authenticated|signin-with-chatgpt|getChatGPTUser/i);
+});
+
+test("protects complimentary Pro administration with a stable WorkOS allowlist", async () => {
+  const [page, client, route, adminAuth, entitlementRoute, accountPage, accountClient] = await Promise.all([
+    readFile(new URL("../app/admin/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/AdminEntitlementsClient.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/entitlements/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/auth/admin.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/entitlement/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/account/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/account/AccountClient.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(page, /isProductAdmin/);
+  assert.match(page, /redirect\("\/login\?return_to=%2Fadmin"\)/);
+  assert.match(client, /Grant complimentary Pro/);
+  assert.match(client, /Revoke Pro access/);
+  assert.match(client, /exact verified work email/i);
+  assert.match(client, /activates after the first matching WorkOS sign-in/i);
+  assert.match(client, /customer Terms and Privacy acceptance is already on file/i);
+  assert.match(route, /requireSameOrigin/);
+  assert.match(route, /acceptance_confirmed/);
+  assert.match(route, /grantManualPro/);
+  assert.match(route, /revokeManualPro/);
+  assert.match(route, /grantPreauthorizedPro/);
+  assert.match(route, /revokePreauthorizedPro/);
+  assert.match(adminAuth, /ADMIN_WORKOS_USER_IDS/);
+  assert.match(adminAuth, /user\.subject/);
+  assert.doesNotMatch(adminAuth, /user\.email/);
+  assert.match(entitlementRoute, /manual-grant/);
+  assert.match(entitlementRoute, /preauthorized-email/);
+  assert.match(entitlementRoute, /claimActivePreauthorizedEntitlement/);
+  assert.match(accountPage, /isProductAdmin\(user\).*href="\/admin"/s);
+  assert.match(accountClient, /Complimentary Pro/);
+  assert.match(accountClient, /Preauthorized Pro/);
+  assert.match(accountClient, /AbortSignal\.timeout\(10_000\)/);
+  assert.match(accountClient, /Account status is temporarily unavailable/);
+  assert.match(accountClient, /Retry account check/);
+  assert.match(accountClient, /No calculator inputs, results, or project files were changed/);
+  assert.match(accountClient, /isPro && account\.billing\.subscription_status/);
+});
+
+test("payment activation is webhook-driven and does not grant from the success redirect", async () => {
+  const [checkout, webhook, account, remoteEntitlement, signingSource, publicKey] = await Promise.all([
+    readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/account/AccountClient.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/billing/entitlement-token.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/entitlement-public-key.json", import.meta.url), "utf8"),
+  ]);
+  assert.match(checkout, /verifyConfiguredProPrice/);
+  assert.match(checkout, /recordLegalAcceptance/);
+  assert.match(checkout, /checkout_attempt_id/);
+  assert.match(checkout, /idempotencyKey: `checkout:\$\{id\}:\$\{body\.checkout_attempt_id\}`/);
+  assert.match(checkout, /success_url: `\$\{origin\}\/account\?checkout=success`/);
+  assert.doesNotMatch(checkout, /setEntitlement|upsertSubscription/);
+  assert.match(webhook, /constructEventAsync/);
+  assert.match(webhook, /Stripe\.createSubtleCryptoProvider/);
+  assert.match(webhook, /hasProcessedStripeEvent/);
+  assert.match(webhook, /upsertSubscription/);
+  assert.match(account, /Activating Pro/);
+  assert.match(account, /do not pay again/i);
+  assert.match(remoteEntitlement, /cached-offline-grace/);
+  assert.match(remoteEntitlement, /fails closed to Free/i);
+  assert.match(remoteEntitlement, /crypto\.subtle\.verify/);
+  assert.match(remoteEntitlement, /entitlement-public-key\.json/);
+  assert.match(remoteEntitlement, /localSnapshot\(this\.manifest, "free", unsignedSnapshot\.status\)/);
+  assert.match(signingSource, /privateJwk\.alg = "EdDSA"/);
+  assert.equal(JSON.parse(publicKey).alg, "EdDSA");
 });
 
 test("ships the Python worker and shared runtime manifest", async () => {
@@ -65,6 +210,7 @@ test("ships the Python worker and shared runtime manifest", async () => {
   assert.match(worker, /ezdxf==1\.4\.4/);
   assert.match(worker, /super_service\.dispatch_safe/);
   assert.match(manifest, /super_service\.py/);
+  assert.match(manifest, /commercial_entitlements\.py/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
 });
 
@@ -79,7 +225,7 @@ test("recalculates after reapplying an identical LandXML preset", async () => {
   const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
   assert.match(source, /const \[calculationRequest, setCalculationRequest\] = useState\(0\)/);
   assert.match(source, /setCalculationRequest\(\(request\) => request \+ 1\)/);
-  assert.match(source, /\[calculationKey, calculationRequest, runtime, call\]/);
+  assert.match(source, /\[calculationKey, calculationRequest, runtime, call, entitlement\]/);
 });
 
 test("opens a save picker for exports with a download fallback", async () => {

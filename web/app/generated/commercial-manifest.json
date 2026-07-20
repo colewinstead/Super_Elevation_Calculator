@@ -1,0 +1,142 @@
+{
+  "policy_version": 1,
+  "production_default_plan": "free",
+  "free_criteria_profile": "mdot-rdsd-2026-04-22",
+  "browser_grace_days": 7,
+  "desktop_grace_days": 30,
+  "plans": {
+    "free": {
+      "name": "Free",
+      "capabilities": [
+        "manual_single_curve",
+        "basic_results",
+        "lane_diagram",
+        "standards_provenance",
+        "sample_calculations"
+      ]
+    },
+    "pro": {
+      "name": "Pro",
+      "capabilities": [
+        "manual_single_curve",
+        "basic_results",
+        "lane_diagram",
+        "standards_provenance",
+        "sample_calculations",
+        "landxml_workflows",
+        "multi_curve_projects",
+        "all_dot_profiles",
+        "project_files",
+        "pdf_reports",
+        "ord_csv_export",
+        "overlay_dxf_export",
+        "provenance_export",
+        "priority_support",
+        "desktop_edition"
+      ]
+    },
+    "team": {
+      "name": "Team",
+      "capabilities": [
+        "manual_single_curve",
+        "basic_results",
+        "lane_diagram",
+        "standards_provenance",
+        "sample_calculations",
+        "landxml_workflows",
+        "multi_curve_projects",
+        "all_dot_profiles",
+        "project_files",
+        "pdf_reports",
+        "ord_csv_export",
+        "overlay_dxf_export",
+        "provenance_export",
+        "priority_support",
+        "desktop_edition",
+        "team_seat_administration"
+      ]
+    }
+  },
+  "capabilities": {
+    "manual_single_curve": {
+      "name": "Manual single-curve calculations",
+      "description": "Enter one curve and calculate locally.",
+      "minimum_plan": "free"
+    },
+    "basic_results": {
+      "name": "Basic results",
+      "description": "Review calculated transition values and lane events.",
+      "minimum_plan": "free"
+    },
+    "lane_diagram": {
+      "name": "Lane diagram",
+      "description": "Inspect station-aware lane slopes.",
+      "minimum_plan": "free"
+    },
+    "standards_provenance": {
+      "name": "Standards and provenance",
+      "description": "See criteria sources, revisions, and engine identity.",
+      "minimum_plan": "free"
+    },
+    "sample_calculations": {
+      "name": "Sample calculations",
+      "description": "Load a synthetic manual example.",
+      "minimum_plan": "free"
+    },
+    "landxml_workflows": {
+      "name": "LandXML corridor workflows",
+      "description": "Read local alignment geometry without uploading it.",
+      "minimum_plan": "pro"
+    },
+    "multi_curve_projects": {
+      "name": "Multi-curve projects",
+      "description": "Build and review combined curve sets.",
+      "minimum_plan": "pro"
+    },
+    "all_dot_profiles": {
+      "name": "All supported DOT profiles",
+      "description": "Use every available versioned criteria profile.",
+      "minimum_plan": "pro"
+    },
+    "project_files": {
+      "name": "Project save and open",
+      "description": "Store and reopen local project JSON files.",
+      "minimum_plan": "pro"
+    },
+    "pdf_reports": {
+      "name": "PDF reports",
+      "description": "Create calculation reports locally.",
+      "minimum_plan": "pro"
+    },
+    "ord_csv_export": {
+      "name": "ORD CSV exports",
+      "description": "Create OpenRoads-compatible CSV deliverables.",
+      "minimum_plan": "pro"
+    },
+    "overlay_dxf_export": {
+      "name": "Overlay DXF exports",
+      "description": "Create coordinate-aware CAD overlays.",
+      "minimum_plan": "pro"
+    },
+    "provenance_export": {
+      "name": "Versioned calculation provenance",
+      "description": "Include formal version and criteria traceability in deliverables.",
+      "minimum_plan": "pro"
+    },
+    "priority_support": {
+      "name": "Priority support",
+      "description": "Receive prioritized pilot support.",
+      "minimum_plan": "pro"
+    },
+    "desktop_edition": {
+      "name": "Optional desktop edition",
+      "description": "Use the offline desktop benefit when licensed.",
+      "minimum_plan": "pro"
+    },
+    "team_seat_administration": {
+      "name": "Team seat administration",
+      "description": "Assign named users within an organization.",
+      "minimum_plan": "team"
+    }
+  }
+}

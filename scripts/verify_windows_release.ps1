@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$DistPath,
-    [string]$PublisherName = "Cole Winstead"
+    [string]$PublisherName = "Cole Winstead",
+    [switch]$RequireTimestamp
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,6 +59,9 @@ foreach ($File in $SignedFiles) {
         $Signature.SignatureType -ne "Authenticode") {
         throw "Authenticode signature verification failed for $($File.Name)."
     }
+    if ($RequireTimestamp -and -not $Signature.TimeStamperCertificate) {
+        throw "A trusted signing timestamp is required for $($File.Name), but none was found."
+    }
 
     $Chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
     $Chain.ChainPolicy.RevocationMode = [System.Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
@@ -76,3 +80,4 @@ Write-Host "Verified $($ReleaseFiles.Count) SHA-256 checksums and $($SignedFiles
 Write-Host "Publisher: $($SigningCertificate.Subject)"
 Write-Host "Pilot root thumbprint: $($RootCertificate.Thumbprint)"
 Write-Host "Signing thumbprint: $($SigningCertificate.Thumbprint)"
+Write-Host "Timestamp required: $RequireTimestamp"

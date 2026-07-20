@@ -1,0 +1,14 @@
+# Local WorkOS and Stripe test values only. Copy to .dev.vars; never commit the real file.
+WORKOS_API_KEY=replace_with_staging_api_key
+WORKOS_CLIENT_ID=replace_with_staging_client_id
+WORKOS_COOKIE_PASSWORD=replace_with_at_least_32_random_characters
+NEXT_PUBLIC_WORKOS_REDIRECT_URI=http://localhost:3000/auth/callback
+ADMIN_WORKOS_USER_IDS=user_replace_with_your_workos_user_id
+
+STRIPE_SECRET_KEY=replace_with_test_secret
+STRIPE_WEBHOOK_SECRET=replace_with_webhook_secret
+STRIPE_PRO_PRICE_ID=price_replace_me
+ENTITLEMENT_SIGNING_PRIVATE_JWK={"kty":"OKP","crv":"Ed25519","d":"replace_me","x":"must_match_committed_public_key"}
+
+# Live Stripe keys remain locked unless this is explicitly true in hosted secrets.
+ALLOW_LIVE_PAYMENTS=false

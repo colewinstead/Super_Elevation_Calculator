@@ -2,6 +2,8 @@
 
 This checklist applies to every paid-pilot build. Record the operator, date, commit SHA, application version, calculation-engine version, Windows image, and evidence location. A checked box without retained evidence is not validation.
 
+Start each candidate with a private workspace created outside the repository using `python scripts/create_pilot_evidence_bundle.py --output <private-directory>`. Complete `docs/templates/PRIVATE_PE_VALIDATION_RECORD.md` and `docs/templates/PILOT_ACCEPTANCE_RECORD.md` in that private workspace. Follow `docs/PILOT_OPERATIONS.md`. Keep legal review records and attorney communications outside the public repository. Generated records begin unapproved.
+
 ## Release authorization
 
 - [ ] Commercial license/EULA and pilot support terms are approved for the intended recipients.
@@ -23,7 +25,7 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 - [ ] Build on the supported clean Windows x64 image with `scripts\build_windows.ps1 -BuildInstaller`.
 - [ ] Confirm EXE ProductVersion/FileVersion matches `app_info.py`.
 - [ ] Sign the EXE and installer with the approved Authenticode certificate; record whether the pilot self-signed certificate or a public certificate was used.
-- [ ] Verify both signatures after signing and regenerate SHA-256 checksums for the signed artifacts.
+- [ ] Verify both signatures and trusted timestamps using `scripts\verify_windows_release.ps1 -RequireTimestamp`, then regenerate/verify SHA-256 checksums for the signed artifacts.
 - [ ] For a self-signed pilot, confirm each recipient independently verifies the public-certificate thumbprint before trusting it; never distribute the private key or a PFX.
 - [ ] Scan release artifacts using the organization's approved malware controls.
 - [ ] Install and uninstall using a standard (non-administrator) pilot account.
@@ -67,3 +69,5 @@ This checklist applies to every paid-pilot build. Record the operator, date, com
 - [ ] Record the 3–5 authorized pilot users, their application versions, and the support contact.
 - [ ] Retain the prior signed installer for rollback; do not silently auto-update pilot machines.
 - [ ] Archive test output, golden comparisons, screenshots, signatures, hashes, release notes, and approval records.
+- [ ] Generate a no-project-file diagnostic bundle and verify any explicitly selected application log is redacted before support transmission.
+- [ ] Confirm release, engineering acceptance, pilot operations, and legal approval owners signed the private acceptance record.

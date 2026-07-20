@@ -22,7 +22,11 @@ sys.path.insert(0, "/app")
 import super_service
 `);
 
+const freeEntitlement = { plan: "free", status: "active" };
+const proEntitlement = { plan: "pro", status: "active" };
+
 const payload = JSON.stringify({
+  entitlement: freeEntitlement,
   inputs: {
     pc: "10+00", pt: "12+00", speed: "45", radius: "1000",
     facility: "centerline", area: "rural", lane_width: "12",
@@ -33,6 +37,15 @@ pyodide.globals.set("payload", payload);
 const calculationProxy = pyodide.runPython(`super_service.dispatch("calculate", payload)`);
 const calculation = calculationProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 calculationProxy.destroy();
+
+pyodide.globals.set("pro_calculation_payload", JSON.stringify({
+  entitlement: proEntitlement,
+  inputs: JSON.parse(payload).inputs,
+}));
+const proCalculationProxy = pyodide.runPython(`super_service.dispatch("calculate", pro_calculation_payload)`);
+const proCalculation = proCalculationProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+proCalculationProxy.destroy();
+assert.deepEqual(proCalculation, calculation, "Entitlement tier must not alter an authorized calculation");
 
 assert.deepEqual(
   {
@@ -67,6 +80,7 @@ assert.equal(corridorDiagram.curve_count, 2);
 assert.deepEqual(corridorDiagram.curves.map((curve) => curve.curve_name), ["Curve A", "Curve B"]);
 
 const tdotPayload = JSON.stringify({
+  entitlement: proEntitlement,
   inputs: {
     criteria_profile: "tdot-rd11-2026-04-30",
     pc: "10+00", pt: "20+00", speed: "50", radius: "2280",
@@ -74,6 +88,16 @@ const tdotPayload = JSON.stringify({
     lanes_rotated: "2", normal_crown: "0.02", curve_direction: "left",
   },
 });
+pyodide.globals.set("free_tdot_payload", JSON.stringify({
+  ...JSON.parse(tdotPayload),
+  entitlement: freeEntitlement,
+}));
+const freeTdotProxy = pyodide.runPython(`super_service.dispatch_safe("calculate", free_tdot_payload)`);
+const freeTdot = freeTdotProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+freeTdotProxy.destroy();
+assert.equal(freeTdot.ok, false);
+assert.equal(freeTdot.error.type, "EntitlementRequiredError");
+
 pyodide.globals.set("tdot_payload", tdotPayload);
 const tdotProxy = pyodide.runPython(`super_service.dispatch("calculate", tdot_payload)`);
 const tdot = tdotProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
@@ -87,6 +111,7 @@ assert.ok(tdot.lanes.left.length > 0);
 assert.ok(tdot.lanes.right.length > 0);
 
 const landxmlPayload = JSON.stringify({
+  entitlement: proEntitlement,
   filename: "tdot-coordinate-test.xml",
   content: `<?xml version="1.0"?>
 <LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2">
@@ -115,6 +140,7 @@ const corridorContent = `<?xml version="1.0"?>
   </CoordGeom></Alignment></Alignments>
 </LandXML>`;
 const batchPayload = JSON.stringify({
+  entitlement: proEntitlement,
   content: corridorContent,
   filename: "qa-test.xml",
   shared_inputs: { speed: "30", facility: "centerline", area: "rural", lane_width: "12", lanes_rotated: "2", normal_crown: "0.02" },
@@ -123,14 +149,14 @@ pyodide.globals.set("batch_payload", batchPayload);
 const batchProxy = pyodide.runPython(`super_service.dispatch("build_all_landxml_curves", batch_payload)`);
 const batchCurves = batchProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 batchProxy.destroy();
-pyodide.globals.set("qa_payload", JSON.stringify({ content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
+pyodide.globals.set("qa_payload", JSON.stringify({ entitlement: proEntitlement, content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
 const qaProxy = pyodide.runPython(`super_service.dispatch("corridor_qa", qa_payload)`);
 const qa = qaProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 qaProxy.destroy();
 assert.equal(qa.status, "pass");
 assert.equal(qa.curve_count, 1);
 
-pyodide.globals.set("plan_payload", JSON.stringify({ content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
+pyodide.globals.set("plan_payload", JSON.stringify({ entitlement: proEntitlement, content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
 const planProxy = pyodide.runPython(`super_service.dispatch("plan_view", plan_payload)`);
 const plan = planProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 planProxy.destroy();
@@ -144,7 +170,7 @@ assert.equal(plan.layers.ALI_DESIGN_ML_CURVES.color, 8);
 assert.equal(plan.background, "#101010");
 assert.equal(plan.curve_paths, undefined);
 
-pyodide.globals.set("invalid_project_payload", JSON.stringify({ content: "" }));
+pyodide.globals.set("invalid_project_payload", JSON.stringify({ entitlement: proEntitlement, content: "" }));
 const invalidProjectProxy = pyodide.runPython(`super_service.dispatch_safe("project_load", invalid_project_payload)`);
 const invalidProject = invalidProjectProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 invalidProjectProxy.destroy();
@@ -153,6 +179,7 @@ assert.match(invalidProject.error.message, /not valid JSON/);
 assert.doesNotMatch(invalidProject.error.message, /Traceback/);
 
 pyodide.globals.set("excluded_qa_payload", JSON.stringify({
+  entitlement: proEntitlement,
   content: corridorContent,
   filename: "qa-test.xml",
   curves: [],
@@ -166,6 +193,7 @@ assert.equal(excludedQa.curve_count, 0);
 assert.equal(excludedQa.excluded_count, 1);
 
 pyodide.globals.set("results_payload", JSON.stringify({
+  entitlement: proEntitlement,
   curves: [{ results: calculation.results, meta: { curve_direction: "right" }, notes: "" }],
 }));
 const csvProxy = pyodide.runPython(`super_service.dispatch("export_ord_csv", results_payload)`);

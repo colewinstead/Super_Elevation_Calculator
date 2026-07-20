@@ -2,8 +2,6 @@
 
 import { useSyncExternalStore } from "react";
 
-const RELEASES = "https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest/download";
-
 type PreferredPlatform = "windows" | "mac" | "browser";
 
 const subscribe = () => () => {};
@@ -25,8 +23,8 @@ export default function DownloadCards() {
         <div className="platform-mark windows-mark" aria-hidden="true"><i /><i /><i /><i /></div>
         <p>WINDOWS 10 / 11 · x64</p>
         <h3>Windows</h3>
-        <span>Portable desktop executable</span>
-        <a className="download-button" href={`${RELEASES}/SuperElevation.exe`}>Download EXE <b>↓</b></a>
+        <span>Optional desktop edition</span>
+        <div className="download-button desktop-coming-soon" role="status">Coming soon</div>
       </article>
 
       <article className={preferred === "mac" ? "preferred" : ""}>
@@ -34,11 +32,8 @@ export default function DownloadCards() {
         <div className="platform-mark mac-mark" aria-hidden="true">●</div>
         <p>MACOS 15+ · NATIVE BUILDS</p>
         <h3>macOS</h3>
-        <span>Choose your Mac processor</span>
-        <div className="mac-downloads">
-          <a className="download-button" href={`${RELEASES}/SuperelevationCalculator-macOS-Apple-Silicon.dmg`}>Apple Silicon <b>↓</b></a>
-          <a className="download-button secondary-download" href={`${RELEASES}/SuperelevationCalculator-macOS-Intel.dmg`}>Intel <b>↓</b></a>
-        </div>
+        <span>Optional desktop edition</span>
+        <div className="download-button desktop-coming-soon" role="status">Coming soon</div>
       </article>
 
       <article className={preferred === "browser" ? "preferred" : ""}>
