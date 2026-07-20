@@ -134,7 +134,8 @@ async function verifiedTokenSnapshot(token: string) {
     );
     if (!valid) return null;
     return normalizedRemoteSnapshot(JSON.parse(new TextDecoder().decode(decodeBase64Url(payload))));
-  } catch {
+  } catch (error) {
+    console.warn("Entitlement token verification failed.", error);
     return null;
   }
 }
@@ -172,7 +173,8 @@ export class RemoteEntitlementProvider implements EntitlementProvider {
       if (!snapshot) throw new Error("Invalid entitlement response.");
       if (payload.entitlement_token) localStorage.setItem(ENTITLEMENT_CACHE_KEY, payload.entitlement_token);
       return snapshot;
-    } catch {
+    } catch (error) {
+      console.warn("Entitlement refresh failed; checking offline grace.", error);
       return this.cachedFallback();
     }
   }

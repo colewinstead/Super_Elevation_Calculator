@@ -65,6 +65,9 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.match(source, /Review & export/i);
   assert.match(source, /Load synthetic sample/i);
   assert.match(source, /Local test plan/i);
+  assert.match(source, /setLocalDevelopment\(hasLocalEntitlementOverride\(\)\)/);
+  assert.match(source, /const proChip = \(capability: string\) => allows\(entitlement, capability\)/);
+  assert.match(source, /PRO\} access|TOUPPERCASE\(\).*access/i);
   assert.match(source, /requestCapability/i);
   assert.match(upgradeSource, /role="dialog"/i);
   assert.match(upgradeSource, /aria-modal="true"/i);
@@ -160,6 +163,10 @@ test("protects complimentary Pro administration with a stable WorkOS allowlist",
   assert.match(accountPage, /isProductAdmin\(user\).*href="\/admin"/s);
   assert.match(accountClient, /Complimentary Pro/);
   assert.match(accountClient, /Preauthorized Pro/);
+  assert.match(accountClient, /AbortSignal\.timeout\(10_000\)/);
+  assert.match(accountClient, /Account status is temporarily unavailable/);
+  assert.match(accountClient, /Retry account check/);
+  assert.match(accountClient, /No calculator inputs, results, or project files were changed/);
   assert.match(accountClient, /isPro && account\.billing\.subscription_status/);
 });
 

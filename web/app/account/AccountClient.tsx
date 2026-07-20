@@ -38,9 +38,13 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
-    const response = await fetch("/api/entitlement", { cache: "no-store" });
+    const response = await fetch("/api/entitlement", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!response.ok) throw new Error("Account status is temporarily unavailable.");
     setAccount(await response.json() as AccountState);
+    setError("");
   }, []);
 
   useEffect(() => {
@@ -86,6 +90,19 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
     }
   };
 
+  if (!account && error) return (
+    <div className="account-loading account-load-error" role="alert">
+      <strong>Account status is temporarily unavailable.</strong>
+      <span>Your access check did not finish. No calculator inputs, results, or project files were changed.</span>
+      <div>
+        <button className="marketing-button primary-action" type="button" onClick={() => {
+          setError("");
+          refresh().catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+        }}>Retry account check</button>
+        <Link className="marketing-button secondary-action" href="/calculator">Open calculator</Link>
+      </div>
+    </div>
+  );
   if (!account) return <div className="account-loading" role="status">Checking account and entitlement…</div>;
   const isPro = account.entitlement.plan === "pro" || account.entitlement.plan === "team";
   const isManual = account.entitlement.source === "manual-grant";

@@ -11,7 +11,6 @@ import {
   EMPTY_FREE_ENTITLEMENT,
   EntitlementSnapshot,
   hasLocalEntitlementOverride,
-  isLocalEntitlementDevelopment,
   LocalDevelopmentEntitlementProvider,
   localSnapshot,
   RemoteEntitlementProvider,
@@ -157,7 +156,7 @@ export default function CalculatorApp() {
             : new RemoteEntitlementProvider(message.manifest.commercial);
           entitlementProviderRef.current = provider;
           provider.getSnapshot().then(setEntitlement);
-          setLocalDevelopment(isLocalEntitlementDevelopment());
+          setLocalDevelopment(hasLocalEntitlementOverride());
         }
       } else if (message.type === "fatal") {
         setRuntime("error");
@@ -209,6 +208,10 @@ export default function CalculatorApp() {
     setUpgradeFeature(manifest?.commercial?.capabilities?.[capability]?.name || "This feature");
     return false;
   }, [entitlement, manifest]);
+
+  const proChip = (capability: string) => allows(entitlement, capability)
+    ? null
+    : <span className="pro-chip">Pro</span>;
 
   const changeDevelopmentEntitlement = (plan: CommercialPlan) => {
     if (!manifest?.commercial) return;
@@ -751,18 +754,18 @@ export default function CalculatorApp() {
       <div className="workspace">
         <aside className="panel project-panel">
           <div className="panel-heading"><div><p className="step">01</p><h2>Project</h2></div>{dirty && <span className="dirty">Unsaved</span>}</div>
-          <div className="button-grid"><button onClick={newProject}>New</button>{allows(entitlement, CAPABILITIES.projectFiles) ? <label className="button">Open<input type="file" accept=".json,application/json" onChange={loadProject} /></label> : <button onClick={() => requestCapability(CAPABILITIES.projectFiles)}>Open <span className="pro-chip">Pro</span></button>}<button onClick={saveProject} disabled={runtime !== "ready"}>Save <span className="pro-chip">Pro</span></button></div>
+          <div className="button-grid"><button onClick={newProject}>New</button>{allows(entitlement, CAPABILITIES.projectFiles) ? <label className="button">Open<input type="file" accept=".json,application/json" onChange={loadProject} /></label> : <button onClick={() => requestCapability(CAPABILITIES.projectFiles)}>Open {proChip(CAPABILITIES.projectFiles)}</button>}<button onClick={saveProject} disabled={runtime !== "ready"}>Save {proChip(CAPABILITIES.projectFiles)}</button></div>
           <button className="sample-button" onClick={loadSampleCalculation}>Load synthetic sample <span>Free</span></button>
           {input("project_name", "Project name")}{input("route_name", "Route name")}
           <div className="source-card">
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
-            {allows(entitlement, CAPABILITIES.landxml) ? <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label> : <button className="button accent" onClick={() => requestCapability(CAPABILITIES.landxml)}>Select LandXML <span className="pro-chip">Pro</span></button>}
+            {allows(entitlement, CAPABILITIES.landxml) ? <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label> : <button className="button accent" onClick={() => requestCapability(CAPABILITIES.landxml)}>Select LandXML {proChip(CAPABILITIES.landxml)}</button>}
             {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · {excludedCurveIndexes.length} excluded from QA · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
           </div>
           <div className="curve-list"><div className="list-title"><h3>Calculated curves</h3><span>{curves.length}</span></div>
             {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <button key={index} className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>)}
           </div>
-          <div className="button-grid"><button onClick={addCurve}>Add <span className="pro-chip">Pro</span></button><button onClick={updateCurve}>Update <span className="pro-chip">Pro</span></button><button onClick={removeCurve}>Remove</button></div>
+          <div className="button-grid"><button onClick={addCurve}>Add {proChip(CAPABILITIES.multiCurve)}</button><button onClick={updateCurve}>Update {proChip(CAPABILITIES.multiCurve)}</button><button onClick={removeCurve}>Remove</button></div>
         </aside>
 
         <section className="panel inputs-panel">
@@ -773,7 +776,7 @@ export default function CalculatorApp() {
             else { setLandxmlPreset(-1); setCalculation(null); setDiagramInspector(null); }
           }}><option value={-1}>No LandXML curve selected</option>{landxml?.curve_presets?.map((preset: Dict, index: number) => <option value={index} key={index}>{preset.curve_name} · {preset.curve_direction} · R {preset.radius_ft}{excludedCurveIndexes.includes(index) ? " · excluded from QA" : ""}</option>)}</select></label>}
           <div className="form-grid">{input("alignment_name", "Alignment name")}{input("curve_name", "Curve name")}
-            <label className="field full"><span>Governing standard</span><select value={activeProfileId} onChange={(e) => updateCriteriaProfile(e.target.value)}>{manifest?.criteria_profiles?.map((profile: Dict) => <option value={profile.profile_id} key={profile.profile_id}>{profile.governing_authority} · {profile.revision}{profile.profile_id.startsWith("tdot") ? " · Pro" : ""}</option>)}</select><small>{activeProfile?.profile_name}</small></label>
+            <label className="field full"><span>Governing standard</span><select value={activeProfileId} onChange={(e) => updateCriteriaProfile(e.target.value)}>{manifest?.criteria_profiles?.map((profile: Dict) => <option value={profile.profile_id} key={profile.profile_id}>{profile.governing_authority} · {profile.revision}{profile.profile_id.startsWith("tdot") && !allows(entitlement, CAPABILITIES.allDotProfiles) ? " · Pro" : ""}</option>)}</select><small>{activeProfile?.profile_name}</small></label>
             <label className="field"><span>Curve direction</span><select value={inputs.curve_direction} onChange={(e) => update("curve_direction", e.target.value)}><option value="left">Left</option><option value="right">Right</option></select></label>
             {input("pc", "PC station", true)}{input("pt", "PT station")}
             <label className="field"><span>Design speed <b>*</b></span><select value={inputs.speed} onChange={(e) => update("speed", e.target.value)}><option value="">Select mph</option>{speedOptions.map((speed: string) => <option key={speed}>{speed}</option>)}</select></label>
@@ -809,9 +812,9 @@ export default function CalculatorApp() {
         </section>
       </div>
 
-      <section className="exports panel"><div><p className="step">04</p><h2>Review & export <span className="pro-chip">Pro</span></h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-status"><span>Overlay coordinates</span><strong>{landxml?.summary?.coordinate_system?.display_name || "Select LandXML to detect"}</strong><small>DXF preserves the LandXML XY coordinates without reprojection.</small></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report <span className="pro-chip">Pro</span></button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV <span className="pro-chip">Pro</span></button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF <span className="pro-chip">Pro</span></button></div></section>
+      <section className="exports panel"><div><p className="step">04</p><h2>Review & export {proChip(CAPABILITIES.pdfReports)}</h2><p>Exports use the same recorded calculation results shown above. Supported browsers open a Save dialog; others use Downloads.</p></div><div className="crs-status"><span>Overlay coordinates</span><strong>{landxml?.summary?.coordinate_system?.display_name || "Select LandXML to detect"}</strong><small>DXF preserves the LandXML XY coordinates without reprojection.</small></div><div className="export-buttons"><button onClick={() => performExport("export_pdf", "pdf", "application/pdf")}>PDF report {proChip(CAPABILITIES.pdfReports)}</button><button onClick={() => performExport("export_ord_csv", "csv", "text/csv")}>ORD CSV {proChip(CAPABILITIES.ordCsv)}</button><button className="primary" onClick={() => performExport("export_overlay_dxf", "dxf", "application/dxf")}>Overlay DXF {proChip(CAPABILITIES.overlayDxf)}</button></div></section>
 
-      <footer><p><strong>Engineering aid.</strong> The licensed professional responsible for the project must independently verify criteria, inputs, stationing, coordinate systems, results, and deliverables against governing standards and project requirements.</p><p>Free without account · Local files · Browser processing</p></footer>
+      <footer><p><strong>Engineering aid.</strong> The licensed professional responsible for the project must independently verify criteria, inputs, stationing, coordinate systems, results, and deliverables against governing standards and project requirements.</p><p>{entitlement.plan === "free" ? "Free without account" : `${entitlement.plan.toUpperCase()} access`} · Local files · Browser processing</p></footer>
     </main>
   );
 }
