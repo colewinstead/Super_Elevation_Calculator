@@ -1,5 +1,7 @@
 import commercialManifest from "@/app/generated/commercial-manifest.json";
 import { getProductUser } from "@/app/product-auth";
+import { isProductAdmin } from "@/lib/auth/admin";
+import { resolveAdministratorAccess } from "@/lib/billing/admin-entitlement-policy";
 import { billingConfigurationStatus } from "@/lib/billing/config";
 import { resolveBillingAccess } from "@/lib/billing/entitlement-policy";
 import { resolveManualAccess } from "@/lib/billing/manual-entitlement-policy";
@@ -40,9 +42,11 @@ export async function GET() {
     await upsertBillingUser({ id, email: user.email, displayName: user.displayName, identityProvider: user.provider, identitySubject: user.subject });
     const manualGrant = await getActiveManualEntitlement(id, now);
     const subscription = await getSubscriptionForUser(id);
+    const administratorAccess = resolveAdministratorAccess(isProductAdmin(user), now, commercialManifest.browser_grace_days);
     const manualAccess = resolveManualAccess(manualGrant, now, commercialManifest.browser_grace_days);
-    const access = manualAccess ?? resolveBillingAccess(subscription, now, commercialManifest.browser_grace_days);
-    const entitlement = snapshotFor(access.plan, access.status, access.offlineExpiresAt, manualAccess ? "manual-grant" : "subscription-ledger");
+    const access = administratorAccess ?? manualAccess ?? resolveBillingAccess(subscription, now, commercialManifest.browser_grace_days);
+    const source = administratorAccess ? "administrator" : manualAccess ? "manual-grant" : "subscription-ledger";
+    const entitlement = snapshotFor(access.plan, access.status, access.offlineExpiresAt, source);
     let entitlementToken: string | undefined;
     try {
       entitlementToken = await signEntitlementSnapshot(entitlement);

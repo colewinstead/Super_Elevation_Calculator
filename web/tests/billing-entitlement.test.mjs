@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolveAdministratorAccess } from "../lib/billing/admin-entitlement-policy.ts";
 import { resolveBillingAccess } from "../lib/billing/entitlement-policy.ts";
 import { billingUserId } from "../lib/billing/identity.ts";
 import { resolveManualAccess } from "../lib/billing/manual-entitlement-policy.ts";
@@ -88,4 +89,16 @@ test("Active manual grants provide Pro with the same bounded offline window", ()
 test("Revoked and expired manual grants do not override subscription access", () => {
   assert.equal(resolveManualAccess({ revokedAt: "2026-07-19T00:00:00Z", expiresAt: null }, now), null);
   assert.equal(resolveManualAccess({ revokedAt: null, expiresAt: now }, now), null);
+});
+
+test("Authorized administrators receive Pro without changing engineering input", () => {
+  const engineeringInput = Object.freeze({ profile: "mdot-rdsd-2026-04-22", radius: 1450, speed: 55 });
+  const before = JSON.stringify(engineeringInput);
+  assert.deepEqual(resolveAdministratorAccess(true, now), {
+    plan: "pro",
+    status: "active",
+    offlineExpiresAt: now + 7 * 86400,
+  });
+  assert.equal(resolveAdministratorAccess(false, now), null);
+  assert.equal(JSON.stringify(engineeringInput), before);
 });

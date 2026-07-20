@@ -88,6 +88,7 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
   if (!account) return <div className="account-loading" role="status">Checking account and entitlement…</div>;
   const isPro = account.entitlement.plan === "pro" || account.entitlement.plan === "team";
   const isManual = account.entitlement.source === "manual-grant";
+  const isAdministrator = account.entitlement.source === "administrator";
   const accessEnd = isManual ? account.billing.manual_grant_expires_at : account.billing.current_period_end;
   const periodEnd = accessEnd
     ? new Date(accessEnd * 1000).toLocaleDateString()
@@ -104,6 +105,7 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
         <dl>
           <div><dt>Plan</dt><dd>{account.entitlement.plan.toUpperCase()}</dd></div>
           <div><dt>Entitlement</dt><dd>{account.entitlement.status}</dd></div>
+          {isAdministrator && <div><dt>Access</dt><dd>Administrator Pro</dd></div>}
           {isManual && <div><dt>Access</dt><dd>Complimentary Pro</dd></div>}
           {account.billing.subscription_status && <div><dt>Subscription</dt><dd>{account.billing.subscription_status}</dd></div>}
           {account.billing.cancel_at_period_end && <div><dt>Renewal</dt><dd>Cancels after paid period</dd></div>}
