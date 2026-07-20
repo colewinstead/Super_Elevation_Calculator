@@ -6,6 +6,7 @@ import { billingConfigurationStatus } from "@/lib/billing/config";
 import { resolveBillingAccess } from "@/lib/billing/entitlement-policy";
 import { resolveManualAccess } from "@/lib/billing/manual-entitlement-policy";
 import { getActiveManualEntitlement } from "@/lib/billing/manual-entitlements";
+import { claimActivePreauthorizedEntitlement } from "@/lib/billing/preauthorized-entitlements";
 import { signEntitlementSnapshot } from "@/lib/billing/entitlement-token";
 import { billingUserId } from "@/lib/billing/identity";
 import { getSubscriptionForUser, upsertBillingUser } from "@/lib/billing/store";
@@ -41,11 +42,13 @@ export async function GET() {
     const id = await billingUserId(user);
     await upsertBillingUser({ id, email: user.email, displayName: user.displayName, identityProvider: user.provider, identitySubject: user.subject });
     const manualGrant = await getActiveManualEntitlement(id, now);
+    const preauthorizedGrant = await claimActivePreauthorizedEntitlement({ userId: id, email: user.email, nowSeconds: now });
     const subscription = await getSubscriptionForUser(id);
     const administratorAccess = resolveAdministratorAccess(isProductAdmin(user), now, commercialManifest.browser_grace_days);
     const manualAccess = resolveManualAccess(manualGrant, now, commercialManifest.browser_grace_days);
-    const access = administratorAccess ?? manualAccess ?? resolveBillingAccess(subscription, now, commercialManifest.browser_grace_days);
-    const source = administratorAccess ? "administrator" : manualAccess ? "manual-grant" : "subscription-ledger";
+    const preauthorizedAccess = resolveManualAccess(preauthorizedGrant, now, commercialManifest.browser_grace_days);
+    const access = administratorAccess ?? manualAccess ?? preauthorizedAccess ?? resolveBillingAccess(subscription, now, commercialManifest.browser_grace_days);
+    const source = administratorAccess ? "administrator" : manualAccess ? "manual-grant" : preauthorizedAccess ? "preauthorized-email" : "subscription-ledger";
     const entitlement = snapshotFor(access.plan, access.status, access.offlineExpiresAt, source);
     let entitlementToken: string | undefined;
     try {
@@ -64,9 +67,11 @@ export async function GET() {
         current_period_end: subscription?.currentPeriodEnd ?? null,
         cancel_at_period_end: subscription?.cancelAtPeriodEnd ?? false,
         manual_grant_expires_at: manualGrant?.expiresAt ?? null,
+        preauthorized_grant_expires_at: preauthorizedGrant?.expiresAt ?? null,
       },
     }, { headers: { "Cache-Control": "private, no-store" } });
-  } catch {
+  } catch (error) {
+    console.error("Entitlement resolution failed.", error);
     return Response.json({ error: "Entitlement service unavailable." }, {
       status: 503,
       headers: { "Cache-Control": "private, no-store" },

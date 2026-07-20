@@ -4,6 +4,7 @@ import { resolveAdministratorAccess } from "../lib/billing/admin-entitlement-pol
 import { resolveBillingAccess } from "../lib/billing/entitlement-policy.ts";
 import { billingUserId } from "../lib/billing/identity.ts";
 import { resolveManualAccess } from "../lib/billing/manual-entitlement-policy.ts";
+import { matchesPreauthorizedEmail, normalizeEntitlementEmail } from "../lib/billing/preauthorization-policy.ts";
 
 const now = 2_000_000_000;
 
@@ -100,5 +101,24 @@ test("Authorized administrators receive Pro without changing engineering input",
     offlineExpiresAt: now + 7 * 86400,
   });
   assert.equal(resolveAdministratorAccess(false, now), null);
+  assert.equal(JSON.stringify(engineeringInput), before);
+});
+
+test("Preauthorization matches only the exact normalized email", () => {
+  assert.equal(normalizeEntitlementEmail("  Engineer@Stantec.com "), "engineer@stantec.com");
+  assert.equal(matchesPreauthorizedEmail("Engineer@Stantec.com", "engineer@stantec.com"), true);
+  assert.equal(matchesPreauthorizedEmail("engineer@stantec.com", "other@stantec.com"), false);
+  assert.equal(matchesPreauthorizedEmail("engineer@stantec.com", "engineer@stantec.example"), false);
+  assert.equal(matchesPreauthorizedEmail("engineer@stantec.com", "engineer+alias@stantec.com"), false);
+});
+
+test("A preauthorized grant uses the same Pro policy without changing engineering input", () => {
+  const engineeringInput = Object.freeze({ profile: "mdot-rdsd-2026-04-22", radius: 1450, speed: 55 });
+  const before = JSON.stringify(engineeringInput);
+  assert.deepEqual(resolveManualAccess({ revokedAt: null, expiresAt: null }, now), {
+    plan: "pro",
+    status: "active",
+    offlineExpiresAt: now + 7 * 86400,
+  });
   assert.equal(JSON.stringify(engineeringInput), before);
 });

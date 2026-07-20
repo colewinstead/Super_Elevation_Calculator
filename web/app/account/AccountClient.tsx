@@ -16,6 +16,7 @@ type AccountState = {
     current_period_end?: number | null;
     cancel_at_period_end?: boolean;
     manual_grant_expires_at?: number | null;
+    preauthorized_grant_expires_at?: number | null;
   };
 };
 
@@ -89,7 +90,12 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
   const isPro = account.entitlement.plan === "pro" || account.entitlement.plan === "team";
   const isManual = account.entitlement.source === "manual-grant";
   const isAdministrator = account.entitlement.source === "administrator";
-  const accessEnd = isManual ? account.billing.manual_grant_expires_at : account.billing.current_period_end;
+  const isPreauthorized = account.entitlement.source === "preauthorized-email";
+  const accessEnd = isManual
+    ? account.billing.manual_grant_expires_at
+    : isPreauthorized
+      ? account.billing.preauthorized_grant_expires_at
+      : account.billing.current_period_end;
   const periodEnd = accessEnd
     ? new Date(accessEnd * 1000).toLocaleDateString()
     : null;
@@ -107,6 +113,7 @@ export default function AccountClient({ checkoutState }: { checkoutState?: strin
           <div><dt>Entitlement</dt><dd>{account.entitlement.status}</dd></div>
           {isAdministrator && <div><dt>Access</dt><dd>Administrator Pro</dd></div>}
           {isManual && <div><dt>Access</dt><dd>Complimentary Pro</dd></div>}
+          {isPreauthorized && <div><dt>Access</dt><dd>Preauthorized Pro</dd></div>}
           {account.billing.subscription_status && <div><dt>Subscription</dt><dd>{account.billing.subscription_status}</dd></div>}
           {account.billing.cancel_at_period_end && <div><dt>Renewal</dt><dd>Cancels after paid period</dd></div>}
         </dl>

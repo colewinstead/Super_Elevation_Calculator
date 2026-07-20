@@ -1,7 +1,7 @@
 {
   "key_ops": ["verify"],
   "ext": true,
-  "alg": "Ed25519",
+  "alg": "EdDSA",
   "crv": "Ed25519",
   "x": "dNwj2dQx0lmuCBcmkyYzX226Rw141xm3h280feGGpM0",
   "kty": "OKP"

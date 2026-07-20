@@ -141,28 +141,36 @@ test("protects complimentary Pro administration with a stable WorkOS allowlist",
   assert.match(page, /isProductAdmin/);
   assert.match(page, /redirect\("\/login\?return_to=%2Fadmin"\)/);
   assert.match(client, /Grant complimentary Pro/);
-  assert.match(client, /Revoke manual Pro/);
+  assert.match(client, /Revoke Pro access/);
+  assert.match(client, /exact verified work email/i);
+  assert.match(client, /activates after the first matching WorkOS sign-in/i);
   assert.match(client, /customer Terms and Privacy acceptance is already on file/i);
   assert.match(route, /requireSameOrigin/);
   assert.match(route, /acceptance_confirmed/);
   assert.match(route, /grantManualPro/);
   assert.match(route, /revokeManualPro/);
+  assert.match(route, /grantPreauthorizedPro/);
+  assert.match(route, /revokePreauthorizedPro/);
   assert.match(adminAuth, /ADMIN_WORKOS_USER_IDS/);
   assert.match(adminAuth, /user\.subject/);
   assert.doesNotMatch(adminAuth, /user\.email/);
   assert.match(entitlementRoute, /manual-grant/);
-  assert.match(entitlementRoute, /manualAccess \? "manual-grant" : "subscription-ledger"/);
+  assert.match(entitlementRoute, /preauthorized-email/);
+  assert.match(entitlementRoute, /claimActivePreauthorizedEntitlement/);
   assert.match(accountPage, /isProductAdmin\(user\).*href="\/admin"/s);
   assert.match(accountClient, /Complimentary Pro/);
+  assert.match(accountClient, /Preauthorized Pro/);
   assert.match(accountClient, /isPro && account\.billing\.subscription_status/);
 });
 
 test("payment activation is webhook-driven and does not grant from the success redirect", async () => {
-  const [checkout, webhook, account, remoteEntitlement] = await Promise.all([
+  const [checkout, webhook, account, remoteEntitlement, signingSource, publicKey] = await Promise.all([
     readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/stripe/webhook/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/account/AccountClient.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/billing/entitlement-token.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/entitlement-public-key.json", import.meta.url), "utf8"),
   ]);
   assert.match(checkout, /verifyConfiguredProPrice/);
   assert.match(checkout, /recordLegalAcceptance/);
@@ -181,6 +189,8 @@ test("payment activation is webhook-driven and does not grant from the success r
   assert.match(remoteEntitlement, /crypto\.subtle\.verify/);
   assert.match(remoteEntitlement, /entitlement-public-key\.json/);
   assert.match(remoteEntitlement, /localSnapshot\(this\.manifest, "free", unsignedSnapshot\.status\)/);
+  assert.match(signingSource, /privateJwk\.alg = "EdDSA"/);
+  assert.equal(JSON.parse(publicKey).alg, "EdDSA");
 });
 
 test("ships the Python worker and shared runtime manifest", async () => {

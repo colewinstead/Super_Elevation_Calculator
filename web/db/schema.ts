@@ -64,3 +64,23 @@ export const manualEntitlements = sqliteTable("manual_entitlements", {
   index("manual_entitlements_user_idx").on(table.userId),
   index("manual_entitlements_granted_at_idx").on(table.grantedAt),
 ]);
+
+export const preauthorizedEntitlements = sqliteTable("preauthorized_entitlements", {
+  id: text("id").primaryKey(),
+  email: text("email").notNull(),
+  plan: text("plan").notNull().default("pro"),
+  reason: text("reason").notNull(),
+  expiresAt: integer("expires_at"),
+  grantedBy: text("granted_by").notNull(),
+  grantedAt: text("granted_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  claimedAt: text("claimed_at"),
+  claimedByUserId: text("claimed_by_user_id"),
+  revokedAt: text("revoked_at"),
+  revokedBy: text("revoked_by"),
+  termsVersion: text("terms_version").notNull(),
+  privacyVersion: text("privacy_version").notNull(),
+}, (table) => [
+  index("preauthorized_entitlements_email_idx").on(table.email),
+  index("preauthorized_entitlements_claimed_user_idx").on(table.claimedByUserId),
+  index("preauthorized_entitlements_granted_at_idx").on(table.grantedAt),
+]);

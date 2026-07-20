@@ -9,6 +9,11 @@ import {
   listManualEntitlements,
   revokeManualPro,
 } from "@/lib/billing/manual-entitlements";
+import {
+  grantPreauthorizedPro,
+  listPreauthorizedEntitlements,
+  revokePreauthorizedPro,
+} from "@/lib/billing/preauthorized-entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +30,11 @@ function adminRouteError(error: unknown) {
 export async function GET() {
   try {
     if (!await authorizedAdmin()) return Response.json({ error: "Not authorized." }, { status: 403 });
-    return Response.json({ grants: await listManualEntitlements() }, { headers: { "Cache-Control": "private, no-store" } });
+    const [grants, preauthorizations] = await Promise.all([
+      listManualEntitlements(),
+      listPreauthorizedEntitlements(),
+    ]);
+    return Response.json({ grants, preauthorizations }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return adminRouteError(error);
   }
@@ -47,14 +56,12 @@ export async function POST(request: Request) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
     return Response.json({ error: "Enter the customer's complete account email." }, { status: 400 });
   }
-  const customer = await findBillingUserByEmail(email);
-  if (!customer) {
-    return Response.json({ error: "No account was found. Ask the customer to sign in once, then try again." }, { status: 404 });
-  }
   const adminId = await billingUserId(admin);
+  const customer = await findBillingUserByEmail(email);
   if (body.action === "revoke") {
-    await revokeManualPro(customer.id, adminId);
-    return Response.json({ ok: true, message: `Complimentary Pro was revoked for ${email}.` });
+    await revokePreauthorizedPro(email, adminId);
+    if (customer) await revokeManualPro(customer.id, adminId);
+    return Response.json({ ok: true, message: `Complimentary Pro access was revoked for ${email}.` });
   }
   if (body.action !== "grant") return Response.json({ error: "Unsupported admin action." }, { status: 400 });
   const reason = body.reason?.trim() || "";
@@ -69,15 +76,26 @@ export async function POST(request: Request) {
   if (expiresAt !== null && (!Number.isInteger(expiresAt) || expiresAt <= now)) {
     return Response.json({ error: "The expiration must be a future date and time." }, { status: 400 });
   }
-  await grantManualPro({
-    userId: customer.id,
+  if (customer) {
+    await grantManualPro({
+      userId: customer.id,
+      reason,
+      expiresAt,
+      grantedBy: adminId,
+      termsVersion: TERMS_VERSION,
+      privacyVersion: PRIVACY_VERSION,
+    });
+    return Response.json({ ok: true, message: `Complimentary Pro is active for ${email}.` });
+  }
+  await grantPreauthorizedPro({
+    email,
     reason,
     expiresAt,
     grantedBy: adminId,
     termsVersion: TERMS_VERSION,
     privacyVersion: PRIVACY_VERSION,
   });
-    return Response.json({ ok: true, message: `Complimentary Pro is active for ${email}.` });
+    return Response.json({ ok: true, message: `Pro is preauthorized for ${email} and will activate after their first matching sign-in.` });
   } catch (error) {
     return adminRouteError(error);
   }
