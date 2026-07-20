@@ -142,7 +142,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertNotIn("STANTEC_PNG_B64", source)
 
     def test_windows_version_resource_uses_authoritative_version(self):
-        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 13, 0))
+        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 14, 0))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "version.txt"
             generate(path)
@@ -159,19 +159,27 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertLess(installer_sign, checksum)
         self.assertIn('Where-Object { $_.Name -ne "SHA256SUMS.txt" }', script)
 
-    def test_macos_release_builds_native_disk_images(self):
+    def test_desktop_release_builds_remain_available_manually(self):
         root = Path(__file__).parent
         script = (root / "scripts" / "build_macos.sh").read_text(encoding="utf-8")
         spec = (root / "SuperElevationMac.spec").read_text(encoding="utf-8")
-        workflow = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        release_workflow = (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        macos_workflow = (root / ".github" / "workflows" / "macos-build.yml").read_text(encoding="utf-8")
+        windows_workflow = (root / ".github" / "workflows" / "windows-build.yml").read_text(encoding="utf-8")
         self.assertIn('release_arch="Apple-Silicon"', script)
         self.assertIn('release_arch="Intel"', script)
         self.assertIn("hdiutil create", script)
         self.assertIn('lipo "$executable" -verify_arch', script)
         self.assertIn('"LSMinimumSystemVersion": "15.0"', spec)
         self.assertIn('bundle_identifier="com.colewinstead.superelevationcalculator"', spec)
-        self.assertIn("macos-15-intel", workflow)
-        self.assertIn("SHA256SUMS-macOS.txt", workflow)
+        self.assertIn("workflow_dispatch:", macos_workflow)
+        self.assertIn("macos-15-intel", macos_workflow)
+        self.assertNotIn("pull_request:", macos_workflow)
+        self.assertIn("workflow_dispatch:", windows_workflow)
+        self.assertNotIn("pull_request:", windows_workflow)
+        self.assertNotIn("build-windows:", release_workflow)
+        self.assertNotIn("build-macos:", release_workflow)
+        self.assertIn("needs: [validate-version, build-browser]", release_workflow)
 
     def test_pilot_certificate_release_contains_no_private_key_export(self):
         root = Path(__file__).parent

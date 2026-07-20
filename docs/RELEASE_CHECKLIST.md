@@ -22,6 +22,8 @@ Start each candidate with a private workspace created outside the repository usi
 
 ## Windows build and signing
 
+Deferred while the desktop edition is Coming soon. Run the manual Windows Build workflow and complete this section before distributing a Windows build.
+
 - [ ] Build on the supported clean Windows x64 image with `scripts\build_windows.ps1 -BuildInstaller`.
 - [ ] Confirm EXE ProductVersion/FileVersion matches `app_info.py`.
 - [ ] Sign the EXE and installer with the approved Authenticode certificate; record whether the pilot self-signed certificate or a public certificate was used.
@@ -32,6 +34,8 @@ Start each candidate with a private workspace created outside the repository usi
 - [ ] Confirm Windows Defender/SmartScreen behavior is acceptable on each pilot Windows version.
 
 ## macOS build
+
+Deferred while the desktop edition is Coming soon. Run the manual macOS Build workflow and complete this section before distributing a macOS build.
 
 - [ ] Build and retain the native Apple Silicon and Intel DMGs from the release workflow.
 - [ ] Confirm the application version and minimum macOS version in each bundle match `app_info.py` and the supported release target.
@@ -62,7 +66,7 @@ Start each candidate with a private workspace created outside the repository usi
 
 ## Delivery and support
 
-- [ ] Publish immutable, versioned Windows, macOS, browser, installer, and checksum assets with release notes to the approved delivery channel.
+- [ ] Publish immutable, versioned browser and checksum assets with release notes. Add Windows, macOS, and installer assets only when desktop distribution resumes and their platform acceptance sections are complete.
 - [ ] Verify downloaded hashes and signatures on a clean pilot machine.
 - [ ] Launch the current desktop release with GitHub available and unavailable; confirm the update check stays silent, then test a mocked older build and confirm its download points to the correct Windows or macOS asset.
 - [ ] Provide installation, onboarding, limitations, privacy/log-sharing, backup, update, and rollback instructions.
