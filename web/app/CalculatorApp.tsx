@@ -755,7 +755,7 @@ export default function CalculatorApp() {
         <aside className="panel project-panel">
           <div className="panel-heading"><div><p className="step">01</p><h2>Project</h2></div>{dirty && <span className="dirty">Unsaved</span>}</div>
           <div className="button-grid"><button onClick={newProject}>New</button>{allows(entitlement, CAPABILITIES.projectFiles) ? <label className="button">Open<input type="file" accept=".json,application/json" onChange={loadProject} /></label> : <button onClick={() => requestCapability(CAPABILITIES.projectFiles)}>Open {proChip(CAPABILITIES.projectFiles)}</button>}<button onClick={saveProject} disabled={runtime !== "ready"}>Save {proChip(CAPABILITIES.projectFiles)}</button></div>
-          <button className="sample-button" onClick={loadSampleCalculation}>Load synthetic sample <span>Free</span></button>
+          {entitlement.plan === "free" && <button className="sample-button" onClick={loadSampleCalculation}>Load synthetic sample <span>Free</span></button>}
           {input("project_name", "Project name")}{input("route_name", "Route name")}
           <div className="source-card">
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
