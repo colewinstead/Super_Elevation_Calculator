@@ -65,6 +65,8 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.match(source, /Review & export/i);
   assert.match(source, /Load synthetic sample/i);
   assert.match(source, /entitlement\.plan === "free".*Load synthetic sample/i);
+  assert.match(source, /Coordinate reverse curves/i);
+  assert.match(source, /both lanes at 0% at the tangent midpoint/i);
   assert.match(source, /Local test plan/i);
   assert.match(source, /setLocalDevelopment\(hasLocalEntitlementOverride\(\)\)/);
   assert.match(source, /const proChip = \(capability: string\) => allows\(entitlement, capability\)/);

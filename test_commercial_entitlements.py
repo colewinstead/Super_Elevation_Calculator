@@ -128,6 +128,13 @@ class CommercialEntitlementTests(unittest.TestCase):
         )
         self.assertGreater(pro["summary"]["curve_count"], 0)
 
+        reverse_denial = super_service.dispatch_safe(
+            "coordinate_reverse_curves",
+            json.dumps({"curves": [], "enabled": True, "entitlement": self.snapshot(Plan.FREE)}),
+        )
+        self.assertFalse(reverse_denial["ok"])
+        self.assertEqual(reverse_denial["error"]["type"], "EntitlementRequiredError")
+
     def test_generated_browser_catalog_matches_python_registries(self):
         generated_profiles = json.loads(
             (ROOT / "web" / "app" / "generated" / "criteria-profiles.json").read_text(encoding="utf-8")

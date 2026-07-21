@@ -194,8 +194,26 @@ class SuperExportTests(unittest.TestCase):
         self.assertEqual(left_rows[4]["slope"], "+7.00")
 
         self.assertEqual(right_rows[0]["slope"], "-2.00")
-        self.assertEqual(right_rows[1]["slope"], "-4.90")
+        self.assertEqual(right_rows[1]["slope"], "-5.50")
         self.assertEqual(right_rows[2]["slope"], "-7.00")
+
+    def test_inside_lane_pc_and_pt_interpolate_from_normal_crown(self):
+        results = Super.calculate_superelevation(
+            "100+00", "110+00", "25", "1250", "centerline", "rural",
+            "12", "2", "", "", "", "0.02", "", "",
+        )
+        self.assertAlmostEqual(results["e"], 0.028)
+        left_rows, right_rows = build_lane_rows(results, "left")
+
+        outside_pc = next(row for row in right_rows if row["label"] == "PC")
+        outside_pt = next(row for row in right_rows if row["label"] == "PT")
+        inside_pc = next(row for row in left_rows if row["label"] == "PC")
+        inside_pt = next(row for row in left_rows if row["label"] == "PT")
+
+        self.assertAlmostEqual(outside_pc["slope_pct"], 1.96)
+        self.assertAlmostEqual(outside_pt["slope_pct"], 1.96)
+        self.assertAlmostEqual(inside_pc["slope_pct"], -2.56)
+        self.assertAlmostEqual(inside_pt["slope_pct"], -2.56)
 
     def test_normalized_export_rows_include_signed_labels(self):
         rows = super_exports.build_normalized_rows([self.sample_curve("right")])
@@ -425,7 +443,7 @@ class SuperExportTests(unittest.TestCase):
     def test_overlay_entity_sequence_is_preserved(self):
         self.assertEqual(
             self.overlay_record_digest(),
-            (202, "59594d7141b84e1d3099110cc7e6eaec60db01c9dca6038d9a95f5584e17318e"),
+            (202, "9ee3958db47bee01ddec4b829c524c1a944ed0d668d36a1aede63fc99029e23b"),
         )
 
     def test_overlay_alignment_layer_uses_gray_aci(self):

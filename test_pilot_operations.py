@@ -4,7 +4,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from app_info import APP_VERSION
+from app_info import APP_VERSION, CALCULATION_ENGINE_VERSION
 from scripts.create_pilot_evidence_bundle import ROOT, create_bundle
 from scripts.create_support_diagnostics import create_diagnostics
 
@@ -17,7 +17,7 @@ class PilotOperationsTests(unittest.TestCase):
             identity = json.loads((output / "release-identity.json").read_text(encoding="utf-8"))
 
             self.assertEqual(identity["application_version"], APP_VERSION)
-            self.assertEqual(identity["calculation_engine_version"], "1.1.0")
+            self.assertEqual(identity["calculation_engine_version"], CALCULATION_ENGINE_VERSION)
             self.assertEqual(identity["project_schema_version"], 4)
             self.assertEqual(identity["approval_status"], "unapproved")
             self.assertIsInstance(identity["tracked_worktree_clean"], bool)
