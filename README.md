@@ -63,7 +63,7 @@ Download the latest Windows executable or native macOS disk image from [GitHub R
 
 Requires Python 3.11 or newer.
 
-The current application release is **1.4.18** and the calculation-engine release is **1.1.2**. Engine 1.1.2 corrects both MDOT lane slopes at PC/PT to interpolate 70% of the way from normal crown to full superelevation. Optional tangent-midpoint coordination remains available for consecutive opposite-direction MDOT curves. Application 1.4.18 preserves those coordinated results when a stored curve is selected instead of replacing them with a delayed single-curve preview. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+The current application release is **1.4.19** and the calculation-engine release is **1.1.3**. Engine 1.1.3 keeps each MDOT lane transition linear through the full runoff: the outside lane runs from zero cross slope to full super, while the inside lane holds normal crown until the SE-3A `X1 = L(NC/e)` breakpoint and then rotates linearly to full super. It also separates that inside-lane rotation breakpoint from the earlier normal-crown event so NC cannot appear after the PC. Optional tangent-midpoint coordination remains available for consecutive opposite-direction MDOT curves. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
 
 ```powershell
 git clone https://github.com/colewinstead/Super_Elevation_Calculator.git

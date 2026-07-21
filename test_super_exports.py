@@ -188,16 +188,16 @@ class SuperExportTests(unittest.TestCase):
         results = self.sample_results()
         left_rows, right_rows = build_lane_rows(results, "right")
 
-        self.assertEqual(left_rows[0]["slope"], "-2.00")
-        self.assertEqual(left_rows[2]["slope"], "+2.00")
-        self.assertEqual(left_rows[3]["slope"], "+5.50")
-        self.assertEqual(left_rows[4]["slope"], "+7.00")
+        self.assertEqual(next(row for row in left_rows if row["label"] == "NC")["slope"], "-2.00")
+        self.assertEqual(next(row for row in left_rows if row["label"] == "0%")["slope"], "0.00")
+        self.assertEqual(next(row for row in left_rows if row["label"] == "PC")["slope"], "+4.90")
+        self.assertEqual(next(row for row in left_rows if row["label"] == "FULL SUPER")["slope"], "+7.00")
 
-        self.assertEqual(right_rows[0]["slope"], "-2.00")
-        self.assertEqual(right_rows[1]["slope"], "-5.50")
-        self.assertEqual(right_rows[2]["slope"], "-7.00")
+        self.assertEqual(next(row for row in right_rows if row["label"] == "NC")["slope"], "-2.00")
+        self.assertEqual(next(row for row in right_rows if row["label"] == "PC")["slope"], "-4.90")
+        self.assertEqual(next(row for row in right_rows if row["label"] == "FULL SUPER")["slope"], "-7.00")
 
-    def test_both_lanes_pc_and_pt_interpolate_from_normal_crown(self):
+    def test_pc_and_pt_follow_each_lanes_linear_runoff(self):
         results = Super.calculate_superelevation(
             "100+00", "110+00", "25", "1250", "centerline", "rural",
             "12", "2", "", "", "", "0.02", "", "",
@@ -210,10 +210,10 @@ class SuperExportTests(unittest.TestCase):
         inside_pc = next(row for row in left_rows if row["label"] == "PC")
         inside_pt = next(row for row in left_rows if row["label"] == "PT")
 
-        self.assertAlmostEqual(outside_pc["slope_pct"], 2.56)
-        self.assertAlmostEqual(outside_pt["slope_pct"], 2.56)
-        self.assertAlmostEqual(inside_pc["slope_pct"], -2.56)
-        self.assertAlmostEqual(inside_pt["slope_pct"], -2.56)
+        self.assertAlmostEqual(outside_pc["slope_pct"], 1.96)
+        self.assertAlmostEqual(outside_pt["slope_pct"], 1.96)
+        self.assertAlmostEqual(inside_pc["slope_pct"], -2.0)
+        self.assertAlmostEqual(inside_pt["slope_pct"], -2.0)
 
     def test_user_reported_two_point_six_percent_pc_and_pt_case(self):
         results = Super.calculate_superelevation(
@@ -222,9 +222,64 @@ class SuperExportTests(unittest.TestCase):
         )
         left_rows, right_rows = build_lane_rows(results, "right")
 
-        for rows, expected in ((left_rows, 2.42), (right_rows, -2.42)):
+        for rows, expected in ((left_rows, 1.82), (right_rows, -2.0)):
             self.assertAlmostEqual(next(row for row in rows if row["label"] == "PC")["slope_pct"], expected)
             self.assertAlmostEqual(next(row for row in rows if row["label"] == "PT")["slope_pct"], expected)
+
+    def test_mdots_runoff_is_linear_after_tangent_runout(self):
+        results = Super.calculate_superelevation(
+            "1493+78.219", "1499+59.391", "65", "7650", "centerline", "rural",
+            "12", "2", "0.052", "", "", "0.02", "145", "56",
+        )
+        left_rows, right_rows = build_lane_rows(results, "left", station_format=False)
+
+        for rows, start_label in ((left_rows, "BEGIN ROTATION"), (right_rows, "0%")):
+            pc = next(row for row in rows if row["label"] == "PC")
+            full = next(row for row in rows if row["label"] == "FULL SUPER")
+            start = next(row for row in rows if row["label"] == start_label)
+            fraction = (pc["station_ft"] - start["station_ft"]) / (full["station_ft"] - start["station_ft"])
+            expected = start["slope_pct"] + fraction * (full["slope_pct"] - start["slope_pct"])
+            self.assertAlmostEqual(pc["slope_pct"], expected)
+
+    def test_low_super_inside_nc_precedes_pc(self):
+        results = Super.calculate_superelevation(
+            "8+58.877", "18+60.436", "65", "7650", "centerline", "rural",
+            "12", "2", "0.026", "", "", "0.02", "73", "56",
+        )
+        left_rows, right_rows = build_lane_rows(results, "left", station_format=False)
+        inside_rows = left_rows
+        entry_nc = next(row for row in inside_rows if row["event_type"] == "Normal crown")
+        rotation_start = next(row for row in inside_rows if row["label"] == "BEGIN ROTATION")
+        pc = next(row for row in inside_rows if row["label"] == "PC")
+
+        self.assertLess(entry_nc["station_ft"], pc["station_ft"])
+        self.assertGreater(rotation_start["station_ft"], pc["station_ft"])
+        self.assertAlmostEqual(pc["slope_pct"], -2.0)
+        self.assertEqual([row["station_ft"] for row in left_rows], sorted(row["station_ft"] for row in left_rows))
+        self.assertEqual([row["station_ft"] for row in right_rows], sorted(row["station_ft"] for row in right_rows))
+
+    def test_reverse_curve_coordination_preserves_low_super_entry_order(self):
+        first = {
+            "meta": {"curve_direction": "left"},
+            "results": Super.calculate_superelevation(
+                "8+58.877", "18+60.436", "65", "7650", "centerline", "rural",
+                "12", "2", "0.026", "", "", "0.02", "73", "56",
+            ),
+        }
+        second = {
+            "meta": {"curve_direction": "right"},
+            "results": Super.calculate_superelevation(
+                "20+06.436", "30+07.996", "65", "7650", "centerline", "rural",
+                "12", "2", "0.026", "", "", "0.02", "73", "56",
+            ),
+        }
+        coordinated = super_batch.coordinate_reverse_curve_transitions([first, second])
+        left_rows, _ = build_lane_rows(coordinated[0]["results"], "left", station_format=False)
+        entry_nc = next(row for row in left_rows if row["event_type"] == "Normal crown")
+        pc = next(row for row in left_rows if row["label"] == "PC")
+
+        self.assertLess(entry_nc["station_ft"], pc["station_ft"])
+        self.assertAlmostEqual(pc["slope_pct"], -2.0)
 
     def test_normalized_export_rows_include_signed_labels(self):
         rows = super_exports.build_normalized_rows([self.sample_curve("right")])
@@ -454,7 +509,7 @@ class SuperExportTests(unittest.TestCase):
     def test_overlay_entity_sequence_is_preserved(self):
         self.assertEqual(
             self.overlay_record_digest(),
-            (202, "9bc1711f80e150d57a16d2da5f7b6fcf8736cd7ae26fca0dba7a107a2efbe77e"),
+            (226, "836a50c8ec91ba6bede1dda09bc103421a1e31254fb2da5f7c7a2b20781befc9"),
         )
 
     def test_overlay_alignment_layer_uses_gray_aci(self):

@@ -71,10 +71,15 @@ pyodide.globals.set("pc_pt_regression_payload", JSON.stringify({
 const pcPtRegressionProxy = pyodide.runPython(`super_service.dispatch("calculate", pc_pt_regression_payload)`);
 const pcPtRegression = pcPtRegressionProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 pcPtRegressionProxy.destroy();
-for (const [lane, expected] of [[pcPtRegression.lanes.left, 2.42], [pcPtRegression.lanes.right, -2.42]]) {
-  assert.equal(lane.find((row) => row.label === "PC").slope_pct, expected);
-  assert.equal(lane.find((row) => row.label === "PT").slope_pct, expected);
+for (const [lane, expected] of [[pcPtRegression.lanes.left, 1.82], [pcPtRegression.lanes.right, -2]]) {
+  assert.ok(Math.abs(lane.find((row) => row.label === "PC").slope_pct - expected) < 1e-9);
+  assert.ok(Math.abs(lane.find((row) => row.label === "PT").slope_pct - expected) < 1e-9);
 }
+const insideEntryNc = pcPtRegression.lanes.right.find((row) => row.event_type === "Normal crown");
+const insidePc = pcPtRegression.lanes.right.find((row) => row.label === "PC");
+const insideRotation = pcPtRegression.lanes.right.find((row) => row.label === "BEGIN ROTATION");
+assert.ok(insideEntryNc.station_ft < insidePc.station_ft);
+assert.ok(insideRotation.station_ft > insidePc.station_ft);
 
 pyodide.globals.set("diagram_payload", JSON.stringify({ results: calculation.results, direction: "right" }));
 const diagramProxy = pyodide.runPython(`super_service.dispatch("curve_diagram", diagram_payload)`);
