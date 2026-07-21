@@ -64,6 +64,7 @@ _MDOT_CRITERIA_METADATA = {
         "SE-3B",
     ],
     "implementation_module": "Super.py",
+    "implementation_modules": ["Super.py"],
     "engineering_change_notice": (
         "Engineering validation is version-specific. Any change to criteria values, formulas, interpolation, "
         "rounding, or branching rules requires renewed review; the responsible project PE must independently "

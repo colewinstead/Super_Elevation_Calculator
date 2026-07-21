@@ -60,6 +60,22 @@ assert.deepEqual(
 assert.ok(calculation.lanes.left.length > 0);
 assert.ok(calculation.lanes.right.length > 0);
 
+pyodide.globals.set("pc_pt_regression_payload", JSON.stringify({
+  entitlement: freeEntitlement,
+  inputs: {
+    pc: "20+08.438", pt: "30+07.098", speed: "25", radius: "1250",
+    facility: "centerline", area: "rural", lane_width: "12", lanes_rotated: "2",
+    normal_crown: "0.02", e_manual: "0.026", curve_direction: "right",
+  },
+}));
+const pcPtRegressionProxy = pyodide.runPython(`super_service.dispatch("calculate", pc_pt_regression_payload)`);
+const pcPtRegression = pcPtRegressionProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+pcPtRegressionProxy.destroy();
+for (const [lane, expected] of [[pcPtRegression.lanes.left, 2.42], [pcPtRegression.lanes.right, -2.42]]) {
+  assert.equal(lane.find((row) => row.label === "PC").slope_pct, expected);
+  assert.equal(lane.find((row) => row.label === "PT").slope_pct, expected);
+}
+
 pyodide.globals.set("diagram_payload", JSON.stringify({ results: calculation.results, direction: "right" }));
 const diagramProxy = pyodide.runPython(`super_service.dispatch("curve_diagram", diagram_payload)`);
 const diagram = diagramProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
