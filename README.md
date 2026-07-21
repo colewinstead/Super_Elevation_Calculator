@@ -63,7 +63,7 @@ Download the latest Windows executable or native macOS disk image from [GitHub R
 
 Requires Python 3.11 or newer.
 
-The current application release is **1.4.16** and the calculation-engine release is **1.1.1**. Engine 1.1.1 corrects MDOT inside-lane PC/PT runoff interpolation and adds optional tangent-midpoint coordination for consecutive opposite-direction MDOT curves. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+The current application release is **1.4.17** and the calculation-engine release is **1.1.2**. Engine 1.1.2 corrects both MDOT lane slopes at PC/PT to interpolate 70% of the way from normal crown to full superelevation. Optional tangent-midpoint coordination remains available for consecutive opposite-direction MDOT curves. These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
 
 ```powershell
 git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
