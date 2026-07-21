@@ -79,6 +79,30 @@ corridorDiagramProxy.destroy();
 assert.equal(corridorDiagram.curve_count, 2);
 assert.deepEqual(corridorDiagram.curves.map((curve) => curve.curve_name), ["Curve A", "Curve B"]);
 
+const reverseCurvePayload = {
+  entitlement: proEntitlement,
+  enabled: true,
+  curves: [
+    { results: structuredClone(calculation.results), meta: { curve_name: "Curve A", curve_direction: "right" } },
+    { results: structuredClone(calculation.results), meta: { curve_name: "Curve B", curve_direction: "left" } },
+  ],
+};
+reverseCurvePayload.curves[0].results.pt_ft = 1200;
+reverseCurvePayload.curves[1].results.pc_ft = 1400;
+pyodide.globals.set("reverse_curve_payload", JSON.stringify(reverseCurvePayload));
+const reverseCurveProxy = pyodide.runPython(`super_service.dispatch("coordinate_reverse_curves", reverse_curve_payload)`);
+const reverseCurves = reverseCurveProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+reverseCurveProxy.destroy();
+assert.equal(reverseCurves[0].results.reverse_curve_exit_zero_ft, 1300);
+assert.equal(reverseCurves[1].results.reverse_curve_entry_zero_ft, 1300);
+
+pyodide.globals.set("free_reverse_curve_payload", JSON.stringify({ ...reverseCurvePayload, entitlement: freeEntitlement }));
+const freeReverseCurveProxy = pyodide.runPython(`super_service.dispatch_safe("coordinate_reverse_curves", free_reverse_curve_payload)`);
+const freeReverseCurve = freeReverseCurveProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+freeReverseCurveProxy.destroy();
+assert.equal(freeReverseCurve.ok, false);
+assert.equal(freeReverseCurve.error.type, "EntitlementRequiredError");
+
 const tdotPayload = JSON.stringify({
   entitlement: proEntitlement,
   inputs: {

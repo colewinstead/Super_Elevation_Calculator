@@ -78,6 +78,7 @@ def application_manifest() -> dict[str, Any]:
 _OPERATION_CAPABILITIES = {
     "parse_landxml": Capability.LANDXML_WORKFLOWS,
     "build_all_landxml_curves": Capability.MULTI_CURVE_PROJECTS,
+    "coordinate_reverse_curves": Capability.MULTI_CURVE_PROJECTS,
     "corridor_qa": Capability.LANDXML_WORKFLOWS,
     "plan_view": Capability.LANDXML_WORKFLOWS,
     "project_load": Capability.PROJECT_FILES,
@@ -210,6 +211,12 @@ def build_all_landxml_curves(content: str, filename: str, shared_inputs: dict[st
     data = super_landxml.parse_landxml_text(content, filename)
     normalized = {key: str(value) for key, value in shared_inputs.items()}
     return super_batch.build_curves_from_presets(data.curve_records(), normalized)
+
+
+def coordinate_reverse_curves(curves: list[dict], enabled: bool = True) -> list[dict]:
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() in {"1", "true", "yes", "on"}
+    return super_batch.coordinate_reverse_curve_transitions(curves, enabled=bool(enabled))
 
 
 def lookup(results: dict, direction: str, station_text: str = "", slope_text: str = "") -> dict[str, Any]:
@@ -401,6 +408,9 @@ def dispatch(operation: str, payload_json: str = "{}") -> Any:
         "parse_landxml": lambda: parse_landxml(payload["content"], payload.get("filename", "alignment.xml")),
         "build_all_landxml_curves": lambda: build_all_landxml_curves(
             payload["content"], payload.get("filename", "alignment.xml"), payload.get("shared_inputs", {})
+        ),
+        "coordinate_reverse_curves": lambda: coordinate_reverse_curves(
+            payload.get("curves", []), payload.get("enabled", True)
         ),
         "lookup": lambda: lookup(
             payload["results"], payload.get("direction", "left"), payload.get("station", ""), payload.get("slope", "")

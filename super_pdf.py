@@ -522,14 +522,29 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
                 ("Normal crown restored", _station(results, results.get("pnc_out_ft"))),
             ]
         else:
-            station_rows = [
-                ("Point of normal crown", _station(results, results.get("pnc_ft"))),
-                ("Point of reverse crown", _station(results, results.get("reverse_crown_ft"))),
-                ("Full super near PC", _station(results, results.get("full_super_ft"))),
-                ("Full super near PT", _station(results, results.get("full_super_out_ft"))),
-                ("Reverse crown out", _station(results, results.get("reverse_crown_out_ft"))),
-                ("Normal crown out", _station(results, results.get("pnc_out_ft"))),
-            ]
+            station_rows = []
+            if results.get("reverse_curve_entry_zero_ft") is not None:
+                station_rows.extend([
+                    ("Reverse-curve 0% at tangent midpoint", _station(results, results.get("reverse_curve_entry_zero_ft"))),
+                    ("Full super after midpoint runoff", _station(results, results.get("full_super_ft"))),
+                ])
+            else:
+                station_rows.extend([
+                    ("Point of normal crown", _station(results, results.get("pnc_ft"))),
+                    ("Point of reverse crown", _station(results, results.get("reverse_crown_ft"))),
+                    ("Full super near PC", _station(results, results.get("full_super_ft"))),
+                ])
+            if results.get("reverse_curve_exit_zero_ft") is not None:
+                station_rows.extend([
+                    ("Full super before midpoint runoff", _station(results, results.get("full_super_out_ft"))),
+                    ("Reverse-curve 0% at tangent midpoint", _station(results, results.get("reverse_curve_exit_zero_ft"))),
+                ])
+            else:
+                station_rows.extend([
+                    ("Full super near PT", _station(results, results.get("full_super_out_ft"))),
+                    ("Reverse crown out", _station(results, results.get("reverse_crown_out_ft"))),
+                    ("Normal crown out", _station(results, results.get("pnc_out_ft"))),
+                ])
 
         note_parts = [
             results.get("friction_note"),

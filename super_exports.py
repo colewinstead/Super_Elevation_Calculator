@@ -84,6 +84,11 @@ def _make_row(
     }
 
 
+def _inside_runoff_slope_percent(e_pct: float, normal_crown_pct: float, fraction: float) -> float:
+    """Interpolate the inside lane from normal crown to full super."""
+    return -(normal_crown_pct + fraction * (e_pct - normal_crown_pct))
+
+
 def build_lane_rows(results: dict, direction: str, station_format: bool = True) -> tuple[list[dict], list[dict]]:
     direction_text = (direction or "left").strip().lower() or "left"
     outside = outside_lane(direction_text)
@@ -110,6 +115,10 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
     nc_pct = normal_crown * 100.0
     e_pct = e * 100.0
     e70_pct = e_pct * 0.7
+    reverse_curve_entry_zero = results.get("reverse_curve_entry_zero_ft")
+    reverse_curve_entry_zero = None if reverse_curve_entry_zero is None else float(reverse_curve_entry_zero)
+    reverse_curve_exit_zero = results.get("reverse_curve_exit_zero_ft")
+    reverse_curve_exit_zero = None if reverse_curve_exit_zero is None else float(reverse_curve_exit_zero)
 
     reverse_crown_case = (
         str(results.get("crown_state", "")).lower().startswith("reverse")
@@ -258,23 +267,43 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
                     rows.append(_make_row("NC", end_station, -nc_pct, "Sta = PT + 0.7L + Lt", "Back to normal crown", station_format))
             return finish(rows)
 
-        if side == outside:
-            rows.append(_make_row("NC", reverse_crown - Lt, -nc_pct, "Sta = PC - 0.7L - Lt", "Normal crown", station_format))
-            rows.append(_make_row("0%", reverse_crown, 0.0, "Sta = PC - 0.7L", "Reverse crown", station_format))
-            rows.append(_make_row("2%", reverse_crown + Lt, nc_pct, "Sta = PC - 0.7L + Lt", "Begin runoff", station_format))
+        if reverse_curve_entry_zero is not None:
+            rows.append(_make_row("0%", reverse_curve_entry_zero, 0.0, "Shared zero slope at tangent midpoint", "Reverse curve zero", station_format))
+            entry_fraction = 0.0 if full_super_pc <= reverse_curve_entry_zero else max(
+                0.0, min(1.0, (pc - reverse_curve_entry_zero) / (full_super_pc - reverse_curve_entry_zero))
+            )
+            pc_slope = final_sign * e_pct * entry_fraction
         else:
-            rows.append(_make_row("NC", reverse_crown + Lt, -nc_pct, "Sta = PC - 0.7L + Lt", "Normal crown", station_format))
+            if side == outside:
+                rows.append(_make_row("NC", reverse_crown - Lt, -nc_pct, "Sta = PC - 0.7L - Lt", "Normal crown", station_format))
+                rows.append(_make_row("0%", reverse_crown, 0.0, "Sta = PC - 0.7L", "Reverse crown", station_format))
+                rows.append(_make_row("2%", reverse_crown + Lt, nc_pct, "Sta = PC - 0.7L + Lt", "Begin runoff", station_format))
+                pc_slope = final_sign * e70_pct
+            else:
+                rows.append(_make_row("NC", reverse_crown + Lt, -nc_pct, "Sta = PC - 0.7L + Lt", "Normal crown", station_format))
+                pc_slope = _inside_runoff_slope_percent(e_pct, nc_pct, 0.7)
 
-        rows.append(_make_row("PC", pc, final_sign * e70_pct, "70% super", "PC 70% super", station_format))
+        rows.append(_make_row("PC", pc, pc_slope, "70% runoff" if reverse_curve_entry_zero is None else "Reverse-curve runoff", "PC 70% super" if reverse_curve_entry_zero is None else "PC reverse-curve runoff", station_format))
         rows.append(_make_row("FULL SUPER", full_super_pc, final_sign * e_pct, "Sta = PC + 0.3L", "Full super", station_format))
         if pt is not None and full_super_pt is not None and reverse_crown_out is not None:
             rows.append(_make_row("FULL SUPER", full_super_pt, final_sign * e_pct, "Sta = PT - 0.3L", "End full super", station_format))
-            rows.append(_make_row("PT", pt, final_sign * e70_pct, "70% super", "PT 70% super", station_format))
-            if side == outside:
-                rows.append(_make_row("0%", reverse_crown_out, 0.0, "Sta = PT + 0.7L", "End runoff", station_format))
-                rows.append(_make_row("NC", reverse_crown_out + Lt, -nc_pct, "0% + runout", "Back to normal crown", station_format))
+            if reverse_curve_exit_zero is not None:
+                exit_fraction = 0.0 if reverse_curve_exit_zero <= full_super_pt else max(
+                    0.0, min(1.0, (reverse_curve_exit_zero - pt) / (reverse_curve_exit_zero - full_super_pt))
+                )
+                pt_slope = final_sign * e_pct * exit_fraction
+                rows.append(_make_row("PT", pt, pt_slope, "Reverse-curve runoff", "PT reverse-curve runoff", station_format))
+                rows.append(_make_row("0%", reverse_curve_exit_zero, 0.0, "Shared zero slope at tangent midpoint", "Reverse curve zero", station_format))
             else:
-                rows.append(_make_row("NC", reverse_crown_out - Lt, -nc_pct, "Sta = PT + 0.7L - Lt", "Back to normal crown", station_format))
+                pt_slope = final_sign * e70_pct if side == outside else _inside_runoff_slope_percent(e_pct, nc_pct, 0.7)
+                rows.append(_make_row("PT", pt, pt_slope, "70% runoff", "PT 70% super", station_format))
+                if side == outside:
+                    rows.append(_make_row("0%", reverse_crown_out, 0.0, "Sta = PT + 0.7L", "End runoff", station_format))
+                    rows.append(_make_row("NC", reverse_crown_out + Lt, -nc_pct, "0% + runout", "Back to normal crown", station_format))
+                else:
+                    rows.append(_make_row("NC", reverse_crown_out - Lt, -nc_pct, "Sta = PT + 0.7L - Lt", "Back to normal crown", station_format))
+        if reverse_curve_entry_zero is not None or reverse_curve_exit_zero is not None:
+            rows.sort(key=lambda row: float(row.get("station_ft") or 0.0))
         return rows
 
     return finish(lane_rows("left")), finish(lane_rows("right"))

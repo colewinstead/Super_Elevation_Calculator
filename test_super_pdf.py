@@ -7,6 +7,7 @@ from pathlib import Path
 
 import Super
 from app_info import APP_VERSION, CALCULATION_ENGINE_VERSION
+import super_batch
 import super_pdf
 import tdot_criteria
 
@@ -108,6 +109,20 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn(b"spiral", content.lower())
         self.assertIn(b"TDOT criteria pages intentionally omit MDOT reference artwork", content)
         self.assertNotIn(b"Reference sheet SE-", content)
+
+    def test_reverse_curve_report_identifies_tangent_midpoint_runoff(self):
+        prior = self.mdot_curve("Curve R1")
+        following = self.mdot_curve("Curve R2")
+        following["meta"]["curve_direction"] = "left"
+        following["results"]["pc_ft"] = 14200.0
+        following["results"]["pt_ft"] = 16200.0
+        curves = super_batch.coordinate_reverse_curve_transitions([prior, following])
+
+        content = self.export(curves)
+        self.assertIn(b"Reverse-curve 0% at", content)
+        self.assertIn(b"tangent midpoint", content)
+        self.assertIn(b"Full super before midpoint", content)
+        self.assertIn(b"Full super after midpoint", content)
 
     def test_normal_crown_manual_override_and_long_notes_are_reported(self):
         normal = self.tdot_curve(normal_crown=True)

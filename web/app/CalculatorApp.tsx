@@ -56,6 +56,7 @@ const INITIAL_INPUTS: Dict = {
   alignment_station_range: "",
   curve_notes: "",
   station_format: true,
+  coordinate_reverse_curves: false,
 };
 
 function download(name: string, value: string | Uint8Array, type: string) {
@@ -425,30 +426,61 @@ export default function CalculatorApp() {
     }
   };
 
-  const addCurve = () => {
+  const coordinateCurveSet = async (nextCurves: Dict[], enabled = Boolean(inputs.coordinate_reverse_curves)) => {
+    if (!nextCurves.length) return nextCurves;
+    return await run("Coordinating reverse curves", () => call("coordinate_reverse_curves", {
+      curves: nextCurves,
+      enabled,
+    }));
+  };
+
+  const changeReverseCurveCoordination = async (enabled: boolean) => {
+    if (!requestCapability(CAPABILITIES.multiCurve)) return;
+    const coordinated = curves.length ? await coordinateCurveSet(curves, enabled) : curves;
+    if (coordinated == null) return;
+    setInputs((current) => ({ ...current, coordinate_reverse_curves: enabled }));
+    setCurves(coordinated);
+    if (selectedCurve >= 0 && coordinated[selectedCurve]) {
+      await loadCurveFrom(coordinated[selectedCurve], selectedCurve);
+    }
+    setDirty(true);
+    setNotice(enabled
+      ? "Opposite-direction MDOT curves will share 0% lane slopes at each tangent midpoint."
+      : "Restored the standard runoff and tangent-runout transitions.");
+  };
+
+  const addCurve = async () => {
     if (!requestCapability(CAPABILITIES.multiCurve)) return;
     const curve = curveObject();
     if (!curve) return setError("Run a calculation before adding a curve.");
-    setCurves((current) => [...current, curve]);
+    const nextCurves = await coordinateCurveSet([...curves, curve]);
+    if (!nextCurves) return;
+    setCurves(nextCurves);
     includeSourceCurve(curve);
     setSelectedCurve(curves.length);
+    await loadCurveFrom(nextCurves[curves.length], curves.length);
     setDirty(true);
   };
 
-  const updateCurve = () => {
+  const updateCurve = async () => {
     if (!requestCapability(CAPABILITIES.multiCurve)) return;
     const curve = curveObject();
     if (!curve || selectedCurve < 0) return setError("Select a curve and run a calculation before updating it.");
-    setCurves((current) => current.map((item, index) => index === selectedCurve ? curve : item));
+    const nextCurves = await coordinateCurveSet(curves.map((item, index) => index === selectedCurve ? curve : item));
+    if (!nextCurves) return;
+    setCurves(nextCurves);
     includeSourceCurve(curve);
+    await loadCurveFrom(nextCurves[selectedCurve], selectedCurve);
     setDirty(true);
   };
 
-  const removeCurve = () => {
+  const removeCurve = async () => {
     if (selectedCurve < 0) return setError("Select a calculated curve before removing it.");
     const removed = curves[selectedCurve];
     const sourceIndex = removed?.meta?.landxml_curve_index;
-    setCurves((current) => current.filter((_, index) => index !== selectedCurve));
+    const nextCurves = await coordinateCurveSet(curves.filter((_, index) => index !== selectedCurve));
+    if (!nextCurves) return;
+    setCurves(nextCurves);
     if (sourceIndex != null) {
       setExcludedCurveIndexes((current) => [...new Set([...current, Number(sourceIndex)])].sort((a, b) => a - b));
     }
@@ -761,6 +793,7 @@ export default function CalculatorApp() {
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
             {allows(entitlement, CAPABILITIES.landxml) ? <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label> : <button className="button accent" onClick={() => requestCapability(CAPABILITIES.landxml)}>Select LandXML {proChip(CAPABILITIES.landxml)}</button>}
             {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · {excludedCurveIndexes.length} excluded from QA · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
+            <label className="check reverse-curve-setting"><input type="checkbox" checked={Boolean(inputs.coordinate_reverse_curves)} onChange={(event) => changeReverseCurveCoordination(event.target.checked)} /><span><strong>Coordinate reverse curves {proChip(CAPABILITIES.multiCurve)}</strong><small>For consecutive opposite-direction MDOT curves, place both lanes at 0% at the tangent midpoint and use runoff on each side without tangent runout.</small></span></label>
           </div>
           <div className="curve-list"><div className="list-title"><h3>Calculated curves</h3><span>{curves.length}</span></div>
             {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <button key={index} className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>)}

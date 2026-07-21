@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest import mock
 
 import super_service
+import super_batch
+import super_exports
 
 
 FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "sr82_synthetic.xml"
@@ -136,6 +138,42 @@ class CorridorQATests(unittest.TestCase):
         report = super_service.corridor_qa(self.content, FIXTURE.name, curves)
         finding = next(item for item in report["findings"] if item["code"] == "SHORT_TANGENT")
         self.assertIn("zero-slope reverse-curve recovery", finding["message"])
+
+    def test_reverse_curve_coordination_meets_at_tangent_midpoint_without_runout(self):
+        curves = super_service.build_all_landxml_curves(
+            self.content,
+            FIXTURE.name,
+            {
+                "speed": "45", "facility": "centerline", "area": "rural",
+                "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
+                "coordinate_reverse_curves": "true",
+            },
+        )
+        prior, following = curves[:2]
+        midpoint = (prior["results"]["pt_ft"] + following["results"]["pc_ft"]) / 2.0
+        self.assertAlmostEqual(prior["results"]["reverse_curve_exit_zero_ft"], midpoint)
+        self.assertAlmostEqual(following["results"]["reverse_curve_entry_zero_ft"], midpoint)
+        self.assertAlmostEqual(prior["results"]["full_super_out_ft"], midpoint - prior["results"]["Lr"])
+        self.assertAlmostEqual(following["results"]["full_super_ft"], midpoint + following["results"]["Lr"])
+
+        for curve in (prior, following):
+            left_rows, right_rows = super_exports.build_lane_rows(
+                curve["results"], curve["meta"]["curve_direction"], station_format=False,
+            )
+            midpoint_rows = [
+                row for row in left_rows + right_rows
+                if row["event_type"] == "Reverse curve zero"
+            ]
+            self.assertEqual(len(midpoint_rows), 2)
+            self.assertTrue(all(row["station_ft"] == midpoint and row["slope_pct"] == 0.0 for row in midpoint_rows))
+
+        report = super_service.corridor_qa(self.content, FIXTURE.name, curves)
+        self.assertNotIn("SHORT_TANGENT", {finding["code"] for finding in report["findings"]})
+
+        restored = super_batch.coordinate_reverse_curve_transitions(curves, enabled=False)
+        self.assertNotIn("reverse_curve_exit_zero_ft", restored[0]["results"])
+        self.assertNotIn("reverse_curve_entry_zero_ft", restored[1]["results"])
+        self.assertNotEqual(restored[0]["results"]["reverse_crown_out_ft"], midpoint)
 
     def test_normal_crown_curve_does_not_require_transition_recovery_events(self):
         curves = copy.deepcopy(self.curves())
