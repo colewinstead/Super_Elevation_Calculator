@@ -231,6 +231,13 @@ test("recalculates after reapplying an identical LandXML preset", async () => {
   assert.match(source, /\[calculationKey, calculationRequest, runtime, call, entitlement\]/);
 });
 
+test("preserves coordinated reverse-curve results when a saved curve is selected", async () => {
+  const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
+  assert.match(source, /loadedCurveCalculation = useRef/);
+  assert.match(source, /loadedCurve\?\.key === calculationKey && loadedCurve\.request === calculationRequest/);
+  assert.match(source, /loadedCurveCalculation\.current = \{ key: calculationInputKey\(nextInputs\), request: calculationRequest \}/);
+});
+
 test("opens a save picker for exports with a download fallback", async () => {
   const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
   assert.match(source, /showSaveFilePicker/);
