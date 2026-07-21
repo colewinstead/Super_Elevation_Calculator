@@ -398,17 +398,40 @@ def analyze_corridor(data: super_landxml.LandXMLData, curves: list[dict], exclud
             continue
         if _normal_crown_only(prior) or _normal_crown_only(following):
             continue
+        prior_coordination = (prior.get("results", {}) or {}).get("reverse_curve_coordination", {}) or {}
+        pair_check = next(
+            (
+                check for check in prior_coordination.get("checks", [])
+                if check.get("paired_curve_indexes") == [prior_index, next_index]
+            ),
+            None,
+        )
+        coordinated_pair = bool(pair_check and pair_check.get("status") == "coordinated")
         prior_bounds = _transition_bounds(prior)
         next_bounds = _transition_bounds(following)
-        if prior_bounds and next_bounds and prior_bounds[1] > next_bounds[0] + 1e-6:
+        prior_direction = str(prior.get("meta", {}).get("curve_direction", "left"))
+        next_direction = str(following.get("meta", {}).get("curve_direction", "left"))
+        if pair_check and pair_check.get("status") == "short_tangent":
+            findings.append(_finding(
+                "SHORT_REVERSE_TANGENT",
+                "block",
+                f"Curves {prior_index + 1} and {next_index + 1} do not meet the minimum reverse-curve tangent length.",
+                [prior_index, next_index],
+                float(pair_check.get("tangent_start_ft", 0.0)),
+                float(pair_check.get("tangent_end_ft", 0.0)),
+                (
+                    f"Available {float(pair_check.get('available_tangent_ft', 0.0)):.2f} ft; "
+                    f"minimum {float(pair_check.get('minimum_tangent_ft', 0.0)):.2f} ft from "
+                    "Tmin = 0.7Lr(exit) + 0.7Lr(entry). Runoff was not shifted or shortened."
+                ),
+            ))
+            continue
+        if prior_bounds and next_bounds and prior_bounds[1] > next_bounds[0] + 1e-6 and not coordinated_pair:
             findings.append(_finding(
                 "TRANSITION_OVERLAP", "review",
                 f"Curves {prior_index + 1} and {next_index + 1} have overlapping transition envelopes.",
                 [prior_index, next_index], next_bounds[0], prior_bounds[1], "Coordinate the adjacent lane-slope transitions.",
             ))
-
-        prior_direction = str(prior.get("meta", {}).get("curve_direction", "left"))
-        next_direction = str(following.get("meta", {}).get("curve_direction", "left"))
         if prior_direction != next_direction:
             demand_end = _zero_event(prior, entering=False)
             demand_start = _zero_event(following, entering=True)

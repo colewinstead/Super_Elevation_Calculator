@@ -342,11 +342,12 @@ export default function CalculatorApp() {
 
   const diagramCurves = useMemo(() => {
     if (!curves.length) return calculation?.results ? [{ results: calculation.results, meta }] : [];
-    if (!calculation?.results || selectedCurve < 0) return curves;
-    return curves.map((curve, index) => index === selectedCurve
-      ? { ...curve, results: calculation.results, meta, notes: inputs.curve_notes || "" }
-      : curve);
-  }, [curves, calculation?.results, inputs.curve_notes, meta, selectedCurve]);
+    // A saved corridor curve may include reverse-curve coordination metadata.
+    // Keep that authoritative curve set on the corridor diagram until the user
+    // explicitly updates it; the debounced single-curve calculation is an
+    // uncoordinated preview and must not replace the saved profile after render.
+    return curves;
+  }, [curves, calculation?.results, meta]);
 
   useEffect(() => {
     if (!diagramCurves.length || runtime !== "ready") {
@@ -453,7 +454,7 @@ export default function CalculatorApp() {
     }
     setDirty(true);
     setNotice(enabled
-      ? "Opposite-direction MDOT curves will share 0% lane slopes at each tangent midpoint."
+      ? "Eligible opposite-direction MDOT curves omit tangent runout between them. Each runoff keeps its 30/70 placement; any extra tangent remains level at 0%."
       : "Restored the standard runoff and tangent-runout transitions.");
   };
 
@@ -805,7 +806,7 @@ export default function CalculatorApp() {
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
             {allows(entitlement, CAPABILITIES.landxml) ? <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label> : <button className="button accent" onClick={() => requestCapability(CAPABILITIES.landxml)}>Select LandXML {proChip(CAPABILITIES.landxml)}</button>}
             {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · {excludedCurveIndexes.length} excluded from QA · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
-            <label className="check reverse-curve-setting"><input type="checkbox" checked={Boolean(inputs.coordinate_reverse_curves)} onChange={(event) => changeReverseCurveCoordination(event.target.checked)} /><span><strong>Coordinate reverse curves {proChip(CAPABILITIES.multiCurve)}</strong><small>For consecutive opposite-direction MDOT curves, place both lanes at 0% at the tangent midpoint and use runoff on each side without tangent runout.</small></span></label>
+            <label className="check reverse-curve-setting"><input type="checkbox" checked={Boolean(inputs.coordinate_reverse_curves)} onChange={(event) => changeReverseCurveCoordination(event.target.checked)} /><span><strong>Coordinate reverse curves {proChip(CAPABILITIES.multiCurve)}</strong><small>For consecutive opposite-direction MDOT curves, omit tangent runout between curves and preserve each curve&apos;s 30/70 runoff. Minimum tangent = 0.7Lr(exit) + 0.7Lr(entry).</small></span></label>
           </div>
           <div className="curve-list"><div className="list-title"><h3>Calculated curves</h3><span>{curves.length}</span></div>
             {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <button key={index} className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>)}

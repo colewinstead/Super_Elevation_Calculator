@@ -25,10 +25,18 @@ def _restore_reverse_curve_transitions(curves: list[dict]) -> None:
         results.pop("reverse_curve_entry_zero_ft", None)
         results.pop("reverse_curve_exit_zero_ft", None)
         results.pop("reverse_curve_transitions", None)
+        results.pop("reverse_curve_coordination", None)
 
 
 def coordinate_reverse_curve_transitions(curves: Iterable[dict], enabled: bool = True) -> list[dict]:
-    """Coordinate consecutive opposite-direction MDOT curves through a tangent midpoint."""
+    """Coordinate eligible MDOT reverse curves without tangent runout.
+
+    Each curve retains its MDOT 30/70 runoff placement.  The available tangent
+    must therefore be at least ``0.7Lr_exit + 0.7Lr_entry``.  Any surplus is a
+    level (0%) segment between the two prescribed runoff endpoints.  A short
+    tangent is recorded as a blocking check; runoff is never stretched or
+    shifted to make it fit.
+    """
     coordinated = copy.deepcopy(list(curves))
     _restore_reverse_curve_transitions(coordinated)
     if not enabled:
@@ -47,10 +55,6 @@ def coordinate_reverse_curve_transitions(curves: Iterable[dict], enabled: bool =
             continue
         if prior_results.get("normal_crown_only") or following_results.get("normal_crown_only"):
             continue
-        if str(prior_results.get("crown_state", "")).lower().startswith("reverse"):
-            continue
-        if str(following_results.get("crown_state", "")).lower().startswith("reverse"):
-            continue
 
         prior_pt = prior_results.get("pt_ft")
         following_pc = following_results.get("pc_ft")
@@ -58,38 +62,62 @@ def coordinate_reverse_curve_transitions(curves: Iterable[dict], enabled: bool =
             continue
         prior_pt = float(prior_pt)
         following_pc = float(following_pc)
-        if following_pc < prior_pt:
+        prior_runoff = float(prior_results.get("Lr", 0.0) or 0.0)
+        following_runoff = float(following_results.get("Lr", 0.0) or 0.0)
+        if prior_runoff <= 0.0 or following_runoff <= 0.0:
             continue
 
-        midpoint = (prior_pt + following_pc) / 2.0
-        prior_originals = prior_results.setdefault("uncoordinated_reverse_curve_transition", {})
-        prior_originals["exit"] = {key: prior_results.get(key) for key in _EXIT_TRANSITION_KEYS}
-        following_originals = following_results.setdefault("uncoordinated_reverse_curve_transition", {})
-        following_originals["entry"] = {key: following_results.get(key) for key in _ENTRY_TRANSITION_KEYS}
+        available = following_pc - prior_pt
+        required = 0.7 * prior_runoff + 0.7 * following_runoff
+        check = {
+            "paired_curve_indexes": [prior_index, prior_index + 1],
+            "tangent_start_ft": prior_pt,
+            "tangent_end_ft": following_pc,
+            "available_tangent_ft": available,
+            "minimum_tangent_ft": required,
+            "deficit_ft": max(0.0, required - available),
+            "rule": "Tmin = 0.7Lr(exit) + 0.7Lr(entry)",
+            "status": "coordinated" if available + 1e-7 >= required else "short_tangent",
+        }
+        prior_coordination = prior_results.setdefault("reverse_curve_coordination", {"checks": []})
+        following_coordination = following_results.setdefault("reverse_curve_coordination", {"checks": []})
+        prior_coordination.setdefault("checks", []).append(copy.deepcopy(check))
+        following_coordination.setdefault("checks", []).append(copy.deepcopy(check))
+        if check["status"] == "short_tangent":
+            continue
 
-        prior_results["full_super_out_ft"] = midpoint - float(prior_results.get("Lr", 0.0) or 0.0)
-        prior_results["reverse_crown_out_ft"] = midpoint
-        prior_results["pnc_out_ft"] = None
-        prior_results["reverse_curve_exit_zero_ft"] = midpoint
-        prior_results.setdefault("reverse_curve_transitions", []).append({
-            "role": "exit",
+        exit_zero = prior_pt + 0.7 * prior_runoff
+        entry_zero = following_pc - 0.7 * following_runoff
+        prior_exit = {
             "paired_curve_index": prior_index + 1,
-            "tangent_start_ft": prior_pt,
-            "tangent_end_ft": following_pc,
-            "zero_slope_ft": midpoint,
-        })
-
-        following_results["pnc_ft"] = None
-        following_results["reverse_crown_ft"] = midpoint
-        following_results["full_super_ft"] = midpoint + float(following_results.get("Lr", 0.0) or 0.0)
-        following_results["reverse_curve_entry_zero_ft"] = midpoint
-        following_results.setdefault("reverse_curve_transitions", []).append({
-            "role": "entry",
+            "zero_station_ft": exit_zero,
+            "plateau_end_ft": entry_zero,
+            "runoff_length_ft": prior_runoff,
+        }
+        following_entry = {
             "paired_curve_index": prior_index,
-            "tangent_start_ft": prior_pt,
-            "tangent_end_ft": following_pc,
-            "zero_slope_ft": midpoint,
-        })
+            "zero_station_ft": entry_zero,
+            "plateau_start_ft": exit_zero,
+            "runoff_length_ft": following_runoff,
+        }
+        prior_coordination["exit"] = prior_exit
+        following_coordination["entry"] = following_entry
+        prior_results["reverse_curve_exit_zero_ft"] = exit_zero
+        following_results["reverse_curve_entry_zero_ft"] = entry_zero
+        prior_results.setdefault("reverse_curve_transitions", []).append({"role": "exit", **prior_exit})
+        following_results.setdefault("reverse_curve_transitions", []).append({"role": "entry", **following_entry})
+
+    for curve in coordinated:
+        coordination = (curve.get("results", {}) or {}).get("reverse_curve_coordination")
+        if not coordination:
+            continue
+        statuses = {check.get("status") for check in coordination.get("checks", [])}
+        if "short_tangent" in statuses and "coordinated" in statuses:
+            coordination["status"] = "partial"
+        elif "short_tangent" in statuses:
+            coordination["status"] = "short_tangent"
+        else:
+            coordination["status"] = "coordinated"
     return coordinated
 
 

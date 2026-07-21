@@ -110,19 +110,20 @@ class PdfReportTests(unittest.TestCase):
         self.assertIn(b"TDOT criteria pages intentionally omit MDOT reference artwork", content)
         self.assertNotIn(b"Reference sheet SE-", content)
 
-    def test_reverse_curve_report_identifies_tangent_midpoint_runoff(self):
+    def test_reverse_curve_report_identifies_prescribed_runoff_and_minimum_tangent(self):
         prior = self.mdot_curve("Curve R1")
         following = self.mdot_curve("Curve R2")
         following["meta"]["curve_direction"] = "left"
-        following["results"]["pc_ft"] = 14200.0
-        following["results"]["pt_ft"] = 16200.0
+        following["results"] = Super.calculate_superelevation(
+            "143+00", "163+00", "45", "1200", "centerline", "rural", "12", "2", "", "", "", "0.02", "", ""
+        )
         curves = super_batch.coordinate_reverse_curve_transitions([prior, following])
 
         content = self.export(curves)
-        self.assertIn(b"Reverse-curve 0% at", content)
-        self.assertIn(b"tangent midpoint", content)
-        self.assertIn(b"Full super before midpoint", content)
-        self.assertIn(b"Full super after midpoint", content)
+        self.assertIn(b"Prior reverse-curve runoff", content)
+        self.assertIn(b"Start next reverse-curve", content)
+        self.assertIn(b"Minimum reverse-curve", content)
+        self.assertIn(b"Tmin = 0.7Lr", content)
 
     def test_normal_crown_manual_override_and_long_notes_are_reported(self):
         normal = self.tdot_curve(normal_crown=True)

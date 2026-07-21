@@ -109,13 +109,17 @@ const reverseCurvePayload = {
   ],
 };
 reverseCurvePayload.curves[0].results.pt_ft = 1200;
-reverseCurvePayload.curves[1].results.pc_ft = 1400;
+reverseCurvePayload.curves[1].results.pc_ft = 1500;
+reverseCurvePayload.curves[1].results.full_super_ft = 1553.4;
 pyodide.globals.set("reverse_curve_payload", JSON.stringify(reverseCurvePayload));
 const reverseCurveProxy = pyodide.runPython(`super_service.dispatch("coordinate_reverse_curves", reverse_curve_payload)`);
 const reverseCurves = reverseCurveProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 reverseCurveProxy.destroy();
-assert.equal(reverseCurves[0].results.reverse_curve_exit_zero_ft, 1300);
-assert.equal(reverseCurves[1].results.reverse_curve_entry_zero_ft, 1300);
+assert.ok(Math.abs(reverseCurves[0].results.reverse_curve_exit_zero_ft - 1324.6) < 1e-9);
+assert.ok(Math.abs(reverseCurves[1].results.reverse_curve_entry_zero_ft - 1375.4) < 1e-9);
+assert.equal(reverseCurves[0].results.full_super_out_ft, calculation.results.full_super_out_ft);
+assert.equal(reverseCurves[1].results.full_super_ft, 1553.4);
+assert.equal(reverseCurves[0].results.reverse_curve_coordination.checks[0].status, "coordinated");
 
 pyodide.globals.set("free_reverse_curve_payload", JSON.stringify({ ...reverseCurvePayload, entitlement: freeEntitlement }));
 const freeReverseCurveProxy = pyodide.runPython(`super_service.dispatch_safe("coordinate_reverse_curves", free_reverse_curve_payload)`);
@@ -200,6 +204,30 @@ const qa = qaProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: fa
 qaProxy.destroy();
 assert.equal(qa.status, "pass");
 assert.equal(qa.curve_count, 1);
+
+const cwContent = await readFile(new URL("../../tests/fixtures/cw_reverse_curve.xml", import.meta.url), "utf8");
+pyodide.globals.set("cw_payload", JSON.stringify({
+  entitlement: proEntitlement,
+  content: cwContent,
+  filename: "cw_reverse_curve.xml",
+  shared_inputs: {
+    speed: "65", facility: "centerline", area: "rural", lane_width: "12",
+    lanes_rotated: "2", normal_crown: "0.02", coordinate_reverse_curves: "true",
+  },
+}));
+const cwProxy = pyodide.runPython(`super_service.dispatch("build_all_landxml_curves", cw_payload)`);
+const cwCurves = cwProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+cwProxy.destroy();
+assert.equal(cwCurves.length, 2);
+const cwCheck = cwCurves[0].results.reverse_curve_coordination.checks[0];
+assert.equal(cwCheck.status, "coordinated");
+assert.ok(Math.abs(cwCheck.available_tangent_ft - 123) < 1e-6);
+assert.ok(Math.abs(cwCheck.minimum_tangent_ft - 86.1) < 1e-6);
+assert.ok(Math.abs(
+  cwCurves[1].results.reverse_curve_entry_zero_ft
+  - cwCurves[0].results.reverse_curve_exit_zero_ft
+  - 36.9,
+) < 1e-6);
 
 pyodide.globals.set("plan_payload", JSON.stringify({ entitlement: proEntitlement, content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
 const planProxy = pyodide.runPython(`super_service.dispatch("plan_view", plan_payload)`);

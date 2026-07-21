@@ -241,6 +241,10 @@ class SuperExportTests(unittest.TestCase):
             expected = start["slope_pct"] + fraction * (full["slope_pct"] - start["slope_pct"])
             self.assertAlmostEqual(pc["slope_pct"], expected)
 
+        for rows in (left_rows, right_rows):
+            self.assertAlmostEqual(abs(next(row for row in rows if row["label"] == "PC")["slope_pct"]), 3.64)
+            self.assertAlmostEqual(abs(next(row for row in rows if row["label"] == "PT")["slope_pct"]), 3.64)
+
     def test_low_super_inside_nc_precedes_pc(self):
         results = Super.calculate_superelevation(
             "8+58.877", "18+60.436", "65", "7650", "centerline", "rural",
@@ -509,7 +513,7 @@ class SuperExportTests(unittest.TestCase):
     def test_overlay_entity_sequence_is_preserved(self):
         self.assertEqual(
             self.overlay_record_digest(),
-            (226, "836a50c8ec91ba6bede1dda09bc103421a1e31254fb2da5f7c7a2b20781befc9"),
+            (210, "332287b22b6b403924fbd77a4766db5d832b194cd32996d3ca941378e127adc7"),
         )
 
     def test_overlay_alignment_layer_uses_gray_aci(self):
