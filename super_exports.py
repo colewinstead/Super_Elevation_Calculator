@@ -84,9 +84,25 @@ def _make_row(
     }
 
 
-def _runoff_slope_magnitude_percent(e_pct: float, normal_crown_pct: float, fraction: float) -> float:
-    """Interpolate a lane from normal-crown magnitude to full super."""
-    return normal_crown_pct + fraction * (e_pct - normal_crown_pct)
+def _linear_slope_at_station(
+    station: float,
+    start_station: float,
+    start_slope_pct: float,
+    end_station: float,
+    end_slope_pct: float,
+) -> float:
+    """Return the slope on the straight transition between two lane events."""
+    if end_station <= start_station:
+        return end_slope_pct
+    fraction = max(0.0, min(1.0, (station - start_station) / (end_station - start_station)))
+    return start_slope_pct + fraction * (end_slope_pct - start_slope_pct)
+
+
+def _inside_rotation_offset(runoff_length: float, e_pct: float, normal_crown_pct: float) -> float:
+    """Return MDOT SE-3A X1, where the inside lane begins or ends rotation."""
+    if runoff_length <= 0.0 or e_pct <= 0.0:
+        return 0.0
+    return runoff_length * max(0.0, min(1.0, normal_crown_pct / e_pct))
 
 
 def build_lane_rows(results: dict, direction: str, station_format: bool = True) -> tuple[list[dict], list[dict]]:
@@ -268,42 +284,62 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
 
         if reverse_curve_entry_zero is not None:
             rows.append(_make_row("0%", reverse_curve_entry_zero, 0.0, "Shared zero slope at tangent midpoint", "Reverse curve zero", station_format))
-            entry_fraction = 0.0 if full_super_pc <= reverse_curve_entry_zero else max(
-                0.0, min(1.0, (pc - reverse_curve_entry_zero) / (full_super_pc - reverse_curve_entry_zero))
+            pc_slope = _linear_slope_at_station(
+                pc,
+                reverse_curve_entry_zero,
+                0.0,
+                full_super_pc,
+                final_sign * e_pct,
             )
-            pc_slope = final_sign * e_pct * entry_fraction
         else:
+            inside_rotation_start = reverse_crown + _inside_rotation_offset(L, e_pct, nc_pct)
             if side == outside:
                 rows.append(_make_row("NC", reverse_crown - Lt, -nc_pct, "Sta = PC - 0.7L - Lt", "Normal crown", station_format))
                 rows.append(_make_row("0%", reverse_crown, 0.0, "Sta = PC - 0.7L", "Reverse crown", station_format))
-                rows.append(_make_row("2%", reverse_crown + Lt, nc_pct, "Sta = PC - 0.7L + Lt", "Begin runoff", station_format))
-                pc_slope = final_sign * _runoff_slope_magnitude_percent(e_pct, nc_pct, 0.7)
+                rows.append(_make_row(f"{nc_pct:g}%", inside_rotation_start, nc_pct, "MDOT SE-3A X1 = L(NC/e)", "Normal-crown slope", station_format))
+                pc_slope = _linear_slope_at_station(
+                    pc, reverse_crown, 0.0, full_super_pc, final_sign * e_pct
+                )
             else:
-                rows.append(_make_row("NC", reverse_crown + Lt, -nc_pct, "Sta = PC - 0.7L + Lt", "Normal crown", station_format))
-                pc_slope = -_runoff_slope_magnitude_percent(e_pct, nc_pct, 0.7)
+                rows.append(_make_row("NC", reverse_crown - Lt, -nc_pct, "Normal crown through tangent runout", "Normal crown", station_format))
+                rows.append(_make_row("BEGIN ROTATION", inside_rotation_start, -nc_pct, "MDOT SE-3A X1 = L(NC/e)", "Inside-lane rotation", station_format))
+                pc_slope = _linear_slope_at_station(
+                    pc, inside_rotation_start, -nc_pct, full_super_pc, final_sign * e_pct
+                )
 
         rows.append(_make_row("PC", pc, pc_slope, "70% runoff" if reverse_curve_entry_zero is None else "Reverse-curve runoff", "PC 70% super" if reverse_curve_entry_zero is None else "PC reverse-curve runoff", station_format))
         rows.append(_make_row("FULL SUPER", full_super_pc, final_sign * e_pct, "Sta = PC + 0.3L", "Full super", station_format))
         if pt is not None and full_super_pt is not None and reverse_crown_out is not None:
             rows.append(_make_row("FULL SUPER", full_super_pt, final_sign * e_pct, "Sta = PT - 0.3L", "End full super", station_format))
             if reverse_curve_exit_zero is not None:
-                exit_fraction = 0.0 if reverse_curve_exit_zero <= full_super_pt else max(
-                    0.0, min(1.0, (reverse_curve_exit_zero - pt) / (reverse_curve_exit_zero - full_super_pt))
+                pt_slope = _linear_slope_at_station(
+                    pt,
+                    full_super_pt,
+                    final_sign * e_pct,
+                    reverse_curve_exit_zero,
+                    0.0,
                 )
-                pt_slope = final_sign * e_pct * exit_fraction
                 rows.append(_make_row("PT", pt, pt_slope, "Reverse-curve runoff", "PT reverse-curve runoff", station_format))
                 rows.append(_make_row("0%", reverse_curve_exit_zero, 0.0, "Shared zero slope at tangent midpoint", "Reverse curve zero", station_format))
             else:
-                runoff_slope = _runoff_slope_magnitude_percent(e_pct, nc_pct, 0.7)
-                pt_slope = final_sign * runoff_slope
+                inside_rotation_end = reverse_crown_out - _inside_rotation_offset(L, e_pct, nc_pct)
+                if side == outside:
+                    pt_slope = _linear_slope_at_station(
+                        pt, full_super_pt, final_sign * e_pct, reverse_crown_out, 0.0
+                    )
+                else:
+                    pt_slope = _linear_slope_at_station(
+                        pt, full_super_pt, final_sign * e_pct, inside_rotation_end, -nc_pct
+                    )
                 rows.append(_make_row("PT", pt, pt_slope, "70% runoff", "PT 70% super", station_format))
                 if side == outside:
+                    rows.append(_make_row(f"{nc_pct:g}%", inside_rotation_end, nc_pct, "MDOT SE-3A X1 = L(NC/e)", "Normal-crown slope", station_format))
                     rows.append(_make_row("0%", reverse_crown_out, 0.0, "Sta = PT + 0.7L", "End runoff", station_format))
                     rows.append(_make_row("NC", reverse_crown_out + Lt, -nc_pct, "0% + runout", "Back to normal crown", station_format))
                 else:
-                    rows.append(_make_row("NC", reverse_crown_out - Lt, -nc_pct, "Sta = PT + 0.7L - Lt", "Back to normal crown", station_format))
-        if reverse_curve_entry_zero is not None or reverse_curve_exit_zero is not None:
-            rows.sort(key=lambda row: float(row.get("station_ft") or 0.0))
+                    rows.append(_make_row("END ROTATION", inside_rotation_end, -nc_pct, "MDOT SE-3A X1 = L(NC/e)", "Inside-lane rotation", station_format))
+                    rows.append(_make_row("NC", reverse_crown_out + Lt, -nc_pct, "Normal crown through tangent runout", "Back to normal crown", station_format))
+        rows.sort(key=lambda row: float(row.get("station_ft") or 0.0))
         return rows
 
     return finish(lane_rows("left")), finish(lane_rows("right"))
