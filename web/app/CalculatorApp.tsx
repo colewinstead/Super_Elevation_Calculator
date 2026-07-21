@@ -102,12 +102,37 @@ function cleanName(value: string, fallback: string) {
   return cleaned || fallback;
 }
 
+function calculationInputKey(inputs: Dict) {
+  return JSON.stringify({
+    criteria_profile: inputs.criteria_profile,
+    curve_direction: inputs.curve_direction,
+    pc: inputs.pc,
+    pt: inputs.pt,
+    speed: inputs.speed,
+    radius: inputs.radius,
+    facility: inputs.facility,
+    area: inputs.area,
+    lane_width: inputs.lane_width,
+    lanes_rotated: inputs.lanes_rotated,
+    e_manual: inputs.e_manual,
+    friction: inputs.friction,
+    rel_grad: inputs.rel_grad,
+    normal_crown: inputs.normal_crown,
+    Lr_manual: inputs.Lr_manual,
+    Lt_manual: inputs.Lt_manual,
+    station_equations: inputs.station_equations,
+    alignment_station_range: inputs.alignment_station_range,
+    station_format: inputs.station_format,
+  });
+}
+
 export default function CalculatorApp() {
   const workerRef = useRef<Worker | null>(null);
   const entitlementProviderRef = useRef<{ refresh(): Promise<EntitlementSnapshot> } | null>(null);
   const pendingRef = useRef(new Map<number, { resolve: (value: any) => void; reject: (reason: Error) => void }>());
   const requestId = useRef(0);
   const calculationSequence = useRef(0);
+  const loadedCurveCalculation = useRef<{ key: string; request: number } | null>(null);
   const [runtime, setRuntime] = useState<RuntimeState>("loading");
   const [runtimeMessage, setRuntimeMessage] = useState("Starting private browser workspace…");
   const [progress, setProgress] = useState(4);
@@ -275,31 +300,14 @@ export default function CalculatorApp() {
     }
   };
 
-  const calculationKey = useMemo(() => JSON.stringify({
-    criteria_profile: inputs.criteria_profile,
-    curve_direction: inputs.curve_direction,
-    pc: inputs.pc,
-    pt: inputs.pt,
-    speed: inputs.speed,
-    radius: inputs.radius,
-    facility: inputs.facility,
-    area: inputs.area,
-    lane_width: inputs.lane_width,
-    lanes_rotated: inputs.lanes_rotated,
-    e_manual: inputs.e_manual,
-    friction: inputs.friction,
-    rel_grad: inputs.rel_grad,
-    normal_crown: inputs.normal_crown,
-    Lr_manual: inputs.Lr_manual,
-    Lt_manual: inputs.Lt_manual,
-    station_equations: inputs.station_equations,
-    alignment_station_range: inputs.alignment_station_range,
-    station_format: inputs.station_format,
-  }), [inputs]);
+  const calculationKey = useMemo(() => calculationInputKey(inputs), [inputs]);
 
   useEffect(() => {
     if (runtime !== "ready") return;
     if (!String(inputs.criteria_profile || "").startsWith("mdot") && !allows(entitlement, CAPABILITIES.allDotProfiles)) return;
+    const loadedCurve = loadedCurveCalculation.current;
+    if (loadedCurve?.key === calculationKey && loadedCurve.request === calculationRequest) return;
+    loadedCurveCalculation.current = null;
     const readyToCalculate = String(inputs.pc ?? "").trim()
       && String(inputs.speed ?? "").trim()
       && String(inputs.radius ?? "").trim();
@@ -510,17 +518,21 @@ export default function CalculatorApp() {
     if (!curve?.results) return;
     if (curve.meta?.landxml_curve_index != null) setLandxmlPreset(Number(curve.meta.landxml_curve_index));
     const values = curve.results.inputs || {};
-    setInputs((current) => ({
-      ...current,
-      ...curve.meta,
-      criteria_profile: values.criteria_profile ?? curve.results?.calculation_metadata?.criteria?.profile_id ?? "mdot-rdsd-2026-04-22",
-      pc: values.pc ?? "", pt: values.pt ?? "", speed: String(values.speed_mph ?? ""), radius: String(values.radius_ft ?? ""),
-      facility: values.facility ?? "centerline", area: values.area_type ?? "rural", lane_width: String(values.lane_width_ft ?? "12"),
-      lanes_rotated: String(values.lanes_rotated ?? "2"), e_manual: values.e_manual == null ? "" : String(values.e_manual),
-      friction: values.friction_input ?? "", rel_grad: values.relative_gradient_input ?? "", normal_crown: String(values.normal_crown ?? "0.02"),
-      Lr_manual: values.Lr_manual == null ? "" : String(values.Lr_manual), Lt_manual: values.Lt_manual == null ? "" : String(values.Lt_manual),
-      curve_notes: curve.notes || "",
-    }));
+    setInputs((current) => {
+      const nextInputs = {
+        ...current,
+        ...curve.meta,
+        criteria_profile: values.criteria_profile ?? curve.results?.calculation_metadata?.criteria?.profile_id ?? "mdot-rdsd-2026-04-22",
+        pc: values.pc ?? "", pt: values.pt ?? "", speed: String(values.speed_mph ?? ""), radius: String(values.radius_ft ?? ""),
+        facility: values.facility ?? "centerline", area: values.area_type ?? "rural", lane_width: String(values.lane_width_ft ?? "12"),
+        lanes_rotated: String(values.lanes_rotated ?? "2"), e_manual: values.e_manual == null ? "" : String(values.e_manual),
+        friction: values.friction_input ?? "", rel_grad: values.relative_gradient_input ?? "", normal_crown: String(values.normal_crown ?? "0.02"),
+        Lr_manual: values.Lr_manual == null ? "" : String(values.Lr_manual), Lt_manual: values.Lt_manual == null ? "" : String(values.Lt_manual),
+        curve_notes: curve.notes || "",
+      };
+      loadedCurveCalculation.current = { key: calculationInputKey(nextInputs), request: calculationRequest };
+      return nextInputs;
+    });
     const presented = await run("Opening curve", () => call("present_results", { results: curve.results, direction: curve.meta?.curve_direction || "left", station_format: stationFormat }));
     if (presented) setCalculation(presented);
   };
