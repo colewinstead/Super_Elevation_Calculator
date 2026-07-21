@@ -52,7 +52,12 @@ export function allows(snapshot: EntitlementSnapshot, capability: string) {
 
 export function isLocalEntitlementDevelopment() {
   if (typeof window === "undefined") return false;
-  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+  const hostname = window.location.hostname;
+  if (["localhost", "127.0.0.1", "::1"].includes(hostname)) return true;
+  if (process.env.NODE_ENV === "production") return false;
+  return /^10\./.test(hostname)
+    || /^192\.168\./.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
 }
 
 export function hasLocalEntitlementOverride() {

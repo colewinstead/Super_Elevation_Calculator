@@ -66,8 +66,10 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.match(source, /Load synthetic sample/i);
   assert.match(source, /entitlement\.plan === "free".*Load synthetic sample/i);
   assert.match(source, /Coordinate reverse curves/i);
-  assert.match(source, /both lanes at 0% at the tangent midpoint/i);
+  assert.match(source, /omit tangent runout between curves/i);
+  assert.match(source, /Minimum tangent = 0\.7Lr\(exit\) \+ 0\.7Lr\(entry\)/i);
   assert.match(source, /Local test plan/i);
+  assert.match(await readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8"), /process\.env\.NODE_ENV === "production"/);
   assert.match(source, /setLocalDevelopment\(hasLocalEntitlementOverride\(\)\)/);
   assert.match(source, /const proChip = \(capability: string\) => allows\(entitlement, capability\)/);
   assert.match(source, /PRO\} access|TOUPPERCASE\(\).*access/i);
@@ -236,6 +238,8 @@ test("preserves coordinated reverse-curve results when a saved curve is selected
   assert.match(source, /loadedCurveCalculation = useRef/);
   assert.match(source, /loadedCurve\?\.key === calculationKey && loadedCurve\.request === calculationRequest/);
   assert.match(source, /loadedCurveCalculation\.current = \{ key: calculationInputKey\(nextInputs\), request: calculationRequest \}/);
+  assert.match(source, /A saved corridor curve may include reverse-curve coordination metadata/);
+  assert.doesNotMatch(source, /return curves\.map\(\(curve, index\) => index === selectedCurve/);
 });
 
 test("opens a save picker for exports with a download fallback", async () => {

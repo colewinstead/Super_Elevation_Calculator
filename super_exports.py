@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Iterable, TextIO
 
 import Super
+import super_transition
 
 
 ORD_HEADERS = [
@@ -106,6 +107,24 @@ def _inside_rotation_offset(runoff_length: float, e_pct: float, normal_crown_pct
 
 
 def build_lane_rows(results: dict, direction: str, station_format: bool = True) -> tuple[list[dict], list[dict]]:
+    if results.get("transition_method") == "mdot_70_30_runoff":
+        left_events, right_events = super_transition.build_mdot_lane_events(results, direction)
+
+        def format_events(events: list[dict]) -> list[dict]:
+            return [
+                _make_row(
+                    str(event["label"]),
+                    float(event["station_ft"]),
+                    float(event["slope_pct"]),
+                    str(event["note"]),
+                    str(event["event_type"]),
+                    station_format,
+                )
+                for event in events
+            ]
+
+        return format_events(left_events), format_events(right_events)
+
     direction_text = (direction or "left").strip().lower() or "left"
     outside = outside_lane(direction_text)
 
@@ -283,7 +302,7 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
             return finish(rows)
 
         if reverse_curve_entry_zero is not None:
-            rows.append(_make_row("0%", reverse_curve_entry_zero, 0.0, "Shared zero slope at tangent midpoint", "Reverse curve zero", station_format))
+            rows.append(_make_row("0%", reverse_curve_entry_zero, 0.0, "Stored reverse-curve zero-slope station", "Reverse curve zero", station_format))
             pc_slope = _linear_slope_at_station(
                 pc,
                 reverse_curve_entry_zero,
@@ -320,7 +339,7 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
                     0.0,
                 )
                 rows.append(_make_row("PT", pt, pt_slope, "Reverse-curve runoff", "PT reverse-curve runoff", station_format))
-                rows.append(_make_row("0%", reverse_curve_exit_zero, 0.0, "Shared zero slope at tangent midpoint", "Reverse curve zero", station_format))
+                rows.append(_make_row("0%", reverse_curve_exit_zero, 0.0, "Stored reverse-curve zero-slope station", "Reverse curve zero", station_format))
             else:
                 inside_rotation_end = reverse_crown_out - _inside_rotation_offset(L, e_pct, nc_pct)
                 if side == outside:

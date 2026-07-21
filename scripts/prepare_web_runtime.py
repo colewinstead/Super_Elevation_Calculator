@@ -32,6 +32,7 @@ MODULES = [
     "super_project.py",
     "super_qa.py",
     "super_service.py",
+    "super_transition.py",
     "super_ui.py",
 ]
 

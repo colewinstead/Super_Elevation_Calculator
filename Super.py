@@ -1830,10 +1830,10 @@ def format_results(results: dict, station_format: bool) -> list[str]:
     lines.append(f"Approx. 0.3Lr: {segments.get('approx_0p3L', 0.0):.2f} ft")
     if results.get("reverse_curve_entry_zero_ft") is not None:
         lines.append(
-            f"Reverse-curve 0% at tangent midpoint: {format_result_station(results, results['reverse_curve_entry_zero_ft'], station_format)}"
+            f"Start next reverse-curve runoff at 0%: {format_result_station(results, results['reverse_curve_entry_zero_ft'], station_format)}"
         )
         lines.append(
-            f"Full super (midpoint + Lr): {format_result_station(results, results['full_super_ft'], station_format)}"
+            f"Full super (PC + 0.3Lr): {format_result_station(results, results['full_super_ft'], station_format)}"
         )
     else:
         lines.append(
@@ -1848,10 +1848,10 @@ def format_results(results: dict, station_format: bool) -> list[str]:
     if results.get("pt_ft") is not None:
         if results.get("reverse_curve_exit_zero_ft") is not None:
             lines.append(
-                f"Full super (midpoint - Lr): {format_result_station(results, results['full_super_out_ft'], station_format)}"
+                f"Full super (PT - 0.3Lr): {format_result_station(results, results['full_super_out_ft'], station_format)}"
             )
             lines.append(
-                f"Reverse-curve 0% at tangent midpoint: {format_result_station(results, results['reverse_curve_exit_zero_ft'], station_format)}"
+                f"Prior reverse-curve runoff reaches 0%: {format_result_station(results, results['reverse_curve_exit_zero_ft'], station_format)}"
             )
         else:
             lines.append(
@@ -1863,6 +1863,14 @@ def format_results(results: dict, station_format: bool) -> list[str]:
             lines.append(
                 f"Point of normal crown (end of tangential runout): {format_result_station(results, results['pnc_out_ft'], station_format)}"
             )
+    coordination = results.get("reverse_curve_coordination", {}) or {}
+    if coordination.get("checks"):
+        check = coordination["checks"][0]
+        lines.append(
+            f"Reverse-curve tangent: {float(check.get('available_tangent_ft', 0.0)):.2f} ft available; "
+            f"{float(check.get('minimum_tangent_ft', 0.0)):.2f} ft minimum"
+        )
+        lines.append(f"Reverse-curve rule: {check.get('rule', 'Tmin = 0.7Lr(exit) + 0.7Lr(entry)')}")
     return lines
 
 def main():
