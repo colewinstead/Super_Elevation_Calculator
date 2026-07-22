@@ -63,13 +63,10 @@ def _append_entry(
     outside = outside_lane(str(results.get("curve_direction", "left")))
 
     if coordinated:
-        plateau_start = float(coordinated.get("plateau_start_ft", coordinated["zero_station_ft"]))
         zero = float(coordinated["zero_station_ft"])
-        rows.append(_event("0%", plateau_start, 0.0, "Start of level reverse-curve tangent segment", "Reverse curve zero"))
-        if zero > plateau_start + EPSILON:
-            rows.append(_event("0%", zero, 0.0, "End of level segment; start of prescribed runoff", "Reverse curve runoff start"))
+        rows.append(_event("0%", zero, 0.0, "Shared reverse-curve transition meeting point", "Reverse curve zero"))
         pc_slope = _linear_value(pc, zero, 0.0, full, target_slope)
-        rows.append(_event("PC", pc, pc_slope, "70% of this curve's runoff occurs before PC", "PC reverse-curve runoff"))
+        rows.append(_event("PC", pc, pc_slope, "Linear slope on coordinated reverse-curve transition", "PC reverse-curve runoff"))
         rows.append(_event("FULL SUPER", full, target_slope, "PC + 0.3Lr", "Full super"))
         return
 
@@ -113,11 +110,8 @@ def _append_exit(
     if coordinated:
         zero = float(coordinated["zero_station_ft"])
         pt_slope = _linear_value(pt, full, target_slope, zero, 0.0)
-        rows.append(_event("PT", pt, pt_slope, "70% of this curve's runoff occurs after PT", "PT reverse-curve runoff"))
-        rows.append(_event("0%", zero, 0.0, "End of prescribed runoff", "Reverse curve zero"))
-        plateau_end = float(coordinated.get("plateau_end_ft", zero))
-        if plateau_end > zero + EPSILON:
-            rows.append(_event("0%", plateau_end, 0.0, "End of level reverse-curve tangent segment", "Reverse curve runoff start"))
+        rows.append(_event("PT", pt, pt_slope, "Linear slope on coordinated reverse-curve transition", "PT reverse-curve runoff"))
+        rows.append(_event("0%", zero, 0.0, "Shared reverse-curve transition meeting point", "Reverse curve zero"))
         return
 
     if side == outside:

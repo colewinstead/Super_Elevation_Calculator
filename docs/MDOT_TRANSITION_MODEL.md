@@ -2,7 +2,7 @@
 
 ## Scope and source record
 
-This document records how calculation engine `1.2.0` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
+This document records how calculation engine `1.2.1` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
 
 The implementation was checked against these official MDOT sources:
 
@@ -36,15 +36,15 @@ The standard manual requires enough tangent length for the transition between re
 
 When two consecutive MDOT circular curves turn in opposite directions and reverse-curve coordination is selected:
 
-- Each curve retains its own `Lr` and its normal 30%/70% placement at PT or PC.
 - Tangent runout is omitted only between the two coordinated curves.
-- The prior curve changes linearly from full superelevation to 0% through its prescribed exit runoff.
-- The following curve changes linearly from 0% to full superelevation through its prescribed entry runoff.
-- If the tangent is longer than `Tmin`, the surplus is a level 0% segment. The runoff is never stretched to fill the tangent.
+- At exactly `Tmin`, each curve retains its standard runoff length and normal 30%/70% placement at PT or PC.
+- When the tangent is at least `Tmin`, the two runoff transitions are extended proportionally to meet at one shared 0% station. There is no level 0% segment.
+- The shared station divides the tangent in proportion to `0.7Lr(exit)` and `0.7Lr(entry)`. It is the tangent midpoint when the two runoff lengths are equal.
+- If the tangent is longer than `Tmin`, Corridor QA emits a review warning because the resulting transition rate is slower than the standard rate.
 - If the tangent is shorter than `Tmin`, coordination is not applied. Corridor QA emits a blocking `SHORT_REVERSE_TANGENT` finding; the engine does not shorten or move either runoff to conceal the deficiency.
 - Criteria profile, direction, or eligibility failures never cause a silent substitution or altered calculation.
 
-For the sanitized `tests/fixtures/cw_reverse_curve.xml` regression at 65 mph, the tangent is 123.0 ft, `Tmin` is 86.1 ft, and the resulting level segment is 36.9 ft.
+For the sanitized `tests/fixtures/cw_reverse_curve.xml` regression at 65 mph, the tangent is 123.0 ft and `Tmin` is 86.1 ft. The two extended linear transitions meet at one 0% station and Corridor QA flags the slower-than-standard transition rate for review.
 
 ## Change control
 
