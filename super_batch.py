@@ -31,11 +31,12 @@ def _restore_reverse_curve_transitions(curves: list[dict]) -> None:
 def coordinate_reverse_curve_transitions(curves: Iterable[dict], enabled: bool = True) -> list[dict]:
     """Coordinate eligible MDOT reverse curves without tangent runout.
 
-    Each curve retains its MDOT 30/70 runoff placement.  The available tangent
-    must therefore be at least ``0.7Lr_exit + 0.7Lr_entry``.  Any surplus is a
-    level (0%) segment between the two prescribed runoff endpoints.  A short
-    tangent is recorded as a blocking check; runoff is never stretched or
-    shifted to make it fit.
+    The available tangent must be at least
+    ``0.7Lr_exit + 0.7Lr_entry``.  When it is sufficient, the two transitions
+    are extended proportionally so they meet at one 0% station; no level 0%
+    segment is inserted.  A tangent longer than the minimum therefore uses a
+    slower-than-standard transition rate.  A short tangent is recorded as a
+    blocking check and is not coordinated.
     """
     coordinated = copy.deepcopy(list(curves))
     _restore_reverse_curve_transitions(coordinated)
@@ -69,6 +70,10 @@ def coordinate_reverse_curve_transitions(curves: Iterable[dict], enabled: bool =
 
         available = following_pc - prior_pt
         required = 0.7 * prior_runoff + 0.7 * following_runoff
+        tangent_ratio = available / required
+        transition_length_factor = 0.3 + 0.7 * tangent_ratio
+        exit_tangent_share = available * (0.7 * prior_runoff / required)
+        meeting_station = prior_pt + exit_tangent_share
         check = {
             "paired_curve_indexes": [prior_index, prior_index + 1],
             "tangent_start_ft": prior_pt,
@@ -78,6 +83,12 @@ def coordinate_reverse_curve_transitions(curves: Iterable[dict], enabled: bool =
             "deficit_ft": max(0.0, required - available),
             "rule": "Tmin = 0.7Lr(exit) + 0.7Lr(entry)",
             "status": "coordinated" if available + 1e-7 >= required else "short_tangent",
+            "transition_rate_status": "standard" if abs(available - required) <= 1e-7 else (
+                "faster_than_standard" if available < required else "slower_than_standard"
+            ),
+            "tangent_ratio": tangent_ratio,
+            "transition_length_factor": transition_length_factor,
+            "meeting_station_ft": meeting_station,
         }
         prior_coordination = prior_results.setdefault("reverse_curve_coordination", {"checks": []})
         following_coordination = following_results.setdefault("reverse_curve_coordination", {"checks": []})
@@ -86,24 +97,23 @@ def coordinate_reverse_curve_transitions(curves: Iterable[dict], enabled: bool =
         if check["status"] == "short_tangent":
             continue
 
-        exit_zero = prior_pt + 0.7 * prior_runoff
-        entry_zero = following_pc - 0.7 * following_runoff
+        meeting_station = float(check["meeting_station_ft"])
         prior_exit = {
             "paired_curve_index": prior_index + 1,
-            "zero_station_ft": exit_zero,
-            "plateau_end_ft": entry_zero,
+            "zero_station_ft": meeting_station,
             "runoff_length_ft": prior_runoff,
+            "coordinated_transition_length_ft": meeting_station - float(prior_results["full_super_out_ft"]),
         }
         following_entry = {
             "paired_curve_index": prior_index,
-            "zero_station_ft": entry_zero,
-            "plateau_start_ft": exit_zero,
+            "zero_station_ft": meeting_station,
             "runoff_length_ft": following_runoff,
+            "coordinated_transition_length_ft": float(following_results["full_super_ft"]) - meeting_station,
         }
         prior_coordination["exit"] = prior_exit
         following_coordination["entry"] = following_entry
-        prior_results["reverse_curve_exit_zero_ft"] = exit_zero
-        following_results["reverse_curve_entry_zero_ft"] = entry_zero
+        prior_results["reverse_curve_exit_zero_ft"] = meeting_station
+        following_results["reverse_curve_entry_zero_ft"] = meeting_station
         prior_results.setdefault("reverse_curve_transitions", []).append({"role": "exit", **prior_exit})
         following_results.setdefault("reverse_curve_transitions", []).append({"role": "entry", **following_entry})
 

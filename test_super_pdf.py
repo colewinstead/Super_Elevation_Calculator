@@ -120,8 +120,9 @@ class PdfReportTests(unittest.TestCase):
         curves = super_batch.coordinate_reverse_curve_transitions([prior, following])
 
         content = self.export(curves)
-        self.assertIn(b"Prior reverse-curve runoff", content)
-        self.assertIn(b"Start next reverse-curve", content)
+        self.assertIn(b"Shared reverse-curve 0%", content)
+        self.assertIn(b"meeting", content)
+        self.assertIn(b"slower than standard", content)
         self.assertIn(b"Minimum reverse-curve", content)
         self.assertIn(b"Tmin = 0.7Lr", content)
 

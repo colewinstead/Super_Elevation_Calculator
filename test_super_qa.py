@@ -140,7 +140,7 @@ class CorridorQATests(unittest.TestCase):
         finding = next(item for item in report["findings"] if item["code"] == "SHORT_TANGENT")
         self.assertIn("zero-slope reverse-curve recovery", finding["message"])
 
-    def test_reverse_curve_coordination_preserves_runoff_and_removes_runout(self):
+    def test_reverse_curve_coordination_uses_one_proportional_zero_meeting(self):
         curves = super_service.build_all_landxml_curves(
             self.content,
             FIXTURE.name,
@@ -153,16 +153,17 @@ class CorridorQATests(unittest.TestCase):
         prior, following = curves[:2]
         prior_results = prior["results"]
         following_results = following["results"]
-        exit_zero = prior_results["pt_ft"] + 0.7 * prior_results["Lr"]
-        entry_zero = following_results["pc_ft"] - 0.7 * following_results["Lr"]
-        self.assertAlmostEqual(prior_results["reverse_curve_exit_zero_ft"], exit_zero)
-        self.assertAlmostEqual(following_results["reverse_curve_entry_zero_ft"], entry_zero)
+        check = prior_results["reverse_curve_coordination"]["checks"][0]
+        expected_meeting = prior_results["pt_ft"] + check["available_tangent_ft"] * (
+            0.7 * prior_results["Lr"] / check["minimum_tangent_ft"]
+        )
+        self.assertAlmostEqual(prior_results["reverse_curve_exit_zero_ft"], expected_meeting)
+        self.assertAlmostEqual(following_results["reverse_curve_entry_zero_ft"], expected_meeting)
         self.assertAlmostEqual(prior_results["full_super_out_ft"], prior_results["pt_ft"] - 0.3 * prior_results["Lr"])
         self.assertAlmostEqual(following_results["full_super_ft"], following_results["pc_ft"] + 0.3 * following_results["Lr"])
-        self.assertLessEqual(exit_zero, entry_zero)
-
-        check = prior_results["reverse_curve_coordination"]["checks"][0]
         self.assertEqual(check["status"], "coordinated")
+        self.assertEqual(check["transition_rate_status"], "slower_than_standard")
+        self.assertAlmostEqual(check["meeting_station_ft"], expected_meeting)
         self.assertAlmostEqual(
             check["minimum_tangent_ft"],
             0.7 * prior_results["Lr"] + 0.7 * following_results["Lr"],
@@ -175,14 +176,17 @@ class CorridorQATests(unittest.TestCase):
             for rows in (left_rows, right_rows):
                 zeros = {
                     row["station_ft"] for row in rows
-                    if row["slope_pct"] == 0.0 and exit_zero - 1e-6 <= row["station_ft"] <= entry_zero + 1e-6
+                    if row["slope_pct"] == 0.0
+                    and prior_results["pt_ft"] <= row["station_ft"] <= following_results["pc_ft"]
                 }
-                self.assertEqual(zeros, {exit_zero, entry_zero})
+                self.assertEqual(zeros, {expected_meeting})
 
         report = super_service.corridor_qa(self.content, FIXTURE.name, curves)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertNotIn("SHORT_TANGENT", codes)
         self.assertNotIn("SHORT_REVERSE_TANGENT", codes)
+        self.assertIn("NONSTANDARD_REVERSE_TRANSITION_RATE", codes)
+        self.assertEqual(report["status"], "review")
 
         restored = super_batch.coordinate_reverse_curve_transitions(curves, enabled=False)
         self.assertNotIn("reverse_curve_exit_zero_ft", restored[0]["results"])
@@ -190,7 +194,7 @@ class CorridorQATests(unittest.TestCase):
         self.assertNotIn("reverse_curve_coordination", restored[0]["results"])
         self.assertAlmostEqual(restored[0]["results"]["full_super_out_ft"], prior_results["full_super_out_ft"])
 
-    def test_latest_cw_reverse_curve_uses_prescribed_runoffs_and_level_surplus(self):
+    def test_latest_cw_reverse_curve_has_single_linear_zero_meeting(self):
         content = CW_FIXTURE.read_text(encoding="utf-8")
         curves = super_service.build_all_landxml_curves(
             content,
@@ -207,12 +211,14 @@ class CorridorQATests(unittest.TestCase):
         self.assertEqual(check["status"], "coordinated")
         self.assertAlmostEqual(check["available_tangent_ft"], 123.0, places=3)
         self.assertAlmostEqual(check["minimum_tangent_ft"], 86.1, places=3)
+        self.assertEqual(check["transition_rate_status"], "slower_than_standard")
+        self.assertAlmostEqual(check["transition_length_factor"], 1.3, places=6)
         self.assertAlmostEqual(
-            following["results"]["reverse_curve_entry_zero_ft"]
-            - prior["results"]["reverse_curve_exit_zero_ft"],
-            36.9,
-            places=3,
+            following["results"]["reverse_curve_entry_zero_ft"],
+            prior["results"]["reverse_curve_exit_zero_ft"],
+            places=6,
         )
+        self.assertAlmostEqual(check["meeting_station_ft"], prior["results"]["pt_ft"] + 56.0, places=6)
 
         left_rows, right_rows = super_exports.build_lane_rows(
             following["results"], following["meta"]["curve_direction"], station_format=False,
@@ -222,7 +228,46 @@ class CorridorQATests(unittest.TestCase):
             self.assertNotIn("NC", entry_labels)
             self.assertNotIn("BEGIN ROTATION", entry_labels)
         pc_slopes = [abs(next(row for row in rows if row["label"] == "PC")["slope_pct"]) for rows in (left_rows, right_rows)]
-        self.assertTrue(all(abs(slope - 1.68) < 1e-9 for slope in pc_slopes))
+        expected_pc_slope = abs(following["results"]["e"] * 100.0) / check["transition_length_factor"]
+        self.assertTrue(all(abs(slope - expected_pc_slope) < 1e-9 for slope in pc_slopes))
+
+        report = super_service.corridor_qa(content, CW_FIXTURE.name, curves)
+        finding = next(item for item in report["findings"] if item["code"] == "NONSTANDARD_REVERSE_TRANSITION_RATE")
+        self.assertEqual(finding["severity"], "review")
+        self.assertIn("meet once at 0%", finding["details"])
+
+    def test_exact_minimum_reverse_tangent_keeps_standard_rate(self):
+        curves = self.curves()
+        prior, following = curves[:2]
+        required = 0.7 * prior["results"]["Lr"] + 0.7 * following["results"]["Lr"]
+        following["results"]["pc_ft"] = prior["results"]["pt_ft"] + required
+        following["results"]["full_super_ft"] = following["results"]["pc_ft"] + 0.3 * following["results"]["Lr"]
+
+        coordinated = super_batch.coordinate_reverse_curve_transitions(curves)
+        check = coordinated[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        self.assertEqual(check["status"], "coordinated")
+        self.assertEqual(check["transition_rate_status"], "standard")
+        self.assertAlmostEqual(check["transition_length_factor"], 1.0)
+        self.assertAlmostEqual(
+            coordinated[0]["results"]["reverse_curve_exit_zero_ft"],
+            coordinated[1]["results"]["reverse_curve_entry_zero_ft"],
+        )
+        prior_rows = super_exports.build_lane_rows(
+            coordinated[0]["results"], coordinated[0]["meta"]["curve_direction"], station_format=False,
+        )
+        following_rows = super_exports.build_lane_rows(
+            coordinated[1]["results"], coordinated[1]["meta"]["curve_direction"], station_format=False,
+        )
+        expected_prior_pt = abs(coordinated[0]["results"]["e"] * 100.0 * 0.7)
+        expected_following_pc = abs(coordinated[1]["results"]["e"] * 100.0 * 0.7)
+        self.assertTrue(all(
+            abs(abs(next(row for row in rows if row["label"] == "PT")["slope_pct"]) - expected_prior_pt) < 1e-9
+            for rows in prior_rows
+        ))
+        self.assertTrue(all(
+            abs(abs(next(row for row in rows if row["label"] == "PC")["slope_pct"]) - expected_following_pc) < 1e-9
+            for rows in following_rows
+        ))
 
     def test_short_reverse_tangent_blocks_without_moving_runoff(self):
         curves = self.curves()

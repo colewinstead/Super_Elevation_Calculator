@@ -426,6 +426,21 @@ def analyze_corridor(data: super_landxml.LandXMLData, curves: list[dict], exclud
                 ),
             ))
             continue
+        if pair_check and pair_check.get("transition_rate_status") == "slower_than_standard":
+            findings.append(_finding(
+                "NONSTANDARD_REVERSE_TRANSITION_RATE",
+                "review",
+                f"Curves {prior_index + 1} and {next_index + 1} use a slower-than-standard reverse-curve transition rate.",
+                [prior_index, next_index],
+                float(pair_check.get("tangent_start_ft", 0.0)),
+                float(pair_check.get("tangent_end_ft", 0.0)),
+                (
+                    f"Available tangent {float(pair_check.get('available_tangent_ft', 0.0)):.2f} ft exceeds the "
+                    f"standard minimum {float(pair_check.get('minimum_tangent_ft', 0.0)):.2f} ft. The transitions "
+                    f"remain linear and meet once at 0%; their lengths are "
+                    f"{float(pair_check.get('transition_length_factor', 1.0)):.3f} times the standard runoff lengths."
+                ),
+            ))
         if prior_bounds and next_bounds and prior_bounds[1] > next_bounds[0] + 1e-6 and not coordinated_pair:
             findings.append(_finding(
                 "TRANSITION_OVERLAP", "review",

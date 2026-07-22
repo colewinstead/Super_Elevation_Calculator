@@ -525,7 +525,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
             station_rows = []
             if results.get("reverse_curve_entry_zero_ft") is not None:
                 station_rows.extend([
-                    ("Start next reverse-curve runoff", _station(results, results.get("reverse_curve_entry_zero_ft"))),
+                    ("Shared reverse-curve 0% meeting", _station(results, results.get("reverse_curve_entry_zero_ft"))),
                     ("Full super after PC (PC + 0.3Lr)", _station(results, results.get("full_super_ft"))),
                 ])
             else:
@@ -537,7 +537,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
             if results.get("reverse_curve_exit_zero_ft") is not None:
                 station_rows.extend([
                     ("Full super before PT (PT - 0.3Lr)", _station(results, results.get("full_super_out_ft"))),
-                    ("Prior reverse-curve runoff reaches 0%", _station(results, results.get("reverse_curve_exit_zero_ft"))),
+                    ("Shared reverse-curve 0% meeting", _station(results, results.get("reverse_curve_exit_zero_ft"))),
                 ])
             else:
                 station_rows.extend([
@@ -552,6 +552,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
                 station_rows.extend([
                     ("Available reverse-curve tangent", _number(check.get("available_tangent_ft"), 2, " ft")),
                     ("Minimum reverse-curve tangent", _number(check.get("minimum_tangent_ft"), 2, " ft")),
+                    ("Transition-rate status", _text(check.get("transition_rate_status", "standard")).replace("_", " ")),
                     ("Reverse-curve rule", _text(check.get("rule"))),
                 ])
 
