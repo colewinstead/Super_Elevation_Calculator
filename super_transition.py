@@ -186,13 +186,31 @@ def build_reverse_pair_plan(
                 raise ValueError(f"The {side} lane handoff slope is outside zero-to-normal-crown.")
             mode = "standard_rate_intersection"
 
-        if not _between(handoff, prior_pt, following_pc):
+        # A normal-crown hold may sit partly or wholly outside the geometric
+        # PT-to-PC tangent while the two standard-rate rotation segments still
+        # pass continuously through that tangent.  In that mode the hold
+        # boundaries, rather than its reporting midpoint, control the profile.
+        # Requiring the midpoint itself to be in the tangent created a false
+        # invalid-handoff range immediately above Tmin.
+        if hold_start is None and not _between(handoff, prior_pt, following_pc):
             raise ValueError(f"The {side} lane handoff is outside the intervening tangent.")
 
         outgoing_end_station = hold_start if hold_start is not None else handoff
         outgoing_end_slope = normal_crown if hold_start is not None else handoff_slope
         incoming_start_station = hold_end if hold_end is not None else handoff
         incoming_start_slope = normal_crown if hold_end is not None else handoff_slope
+
+        def coordinated_slope(station: float) -> float:
+            if hold_start is not None and hold_end is not None:
+                if station < hold_start:
+                    return _line_value(station, prior_full, start_slope, outgoing_signed_rate)
+                if station <= hold_end:
+                    return normal_crown
+                return _line_value(station, following_full, end_slope, incoming_signed_rate)
+            if station <= handoff:
+                return _line_value(station, prior_full, start_slope, outgoing_signed_rate)
+            return _line_value(station, following_full, end_slope, incoming_signed_rate)
+
         prior_events: list[dict[str, Any]] = []
         prior_zero = _zero_event_on_segment(
             prior_full,
@@ -201,11 +219,7 @@ def build_reverse_pair_plan(
             outgoing_end_slope,
             pair_id=pair_id,
         )
-        prior_pt_slope = (
-            normal_crown
-            if hold_start is not None and prior_pt >= hold_start
-            else _line_value(prior_pt, prior_full, start_slope, outgoing_signed_rate)
-        )
+        prior_pt_slope = coordinated_slope(prior_pt)
         prior_events.append(
             _event(
                 "PT",
@@ -265,11 +279,7 @@ def build_reverse_pair_plan(
         )
         if following_zero is not None:
             following_events.append(following_zero)
-        following_pc_slope = (
-            normal_crown
-            if hold_end is not None and following_pc <= hold_end
-            else _line_value(following_pc, following_full, end_slope, incoming_signed_rate)
-        )
+        following_pc_slope = coordinated_slope(following_pc)
         following_events.extend(
             [
                 _event(

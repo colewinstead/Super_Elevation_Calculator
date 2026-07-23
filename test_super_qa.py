@@ -225,6 +225,75 @@ class CorridorQATests(unittest.TestCase):
             {finding["code"] for finding in report["findings"]},
         )
 
+    def test_90_foot_reverse_tangent_above_minimum_has_no_handoff_dead_zone(self):
+        # Regression geometry from ALI_ALT_90'_Tangent.xml.  The source file is
+        # intentionally not retained; these are the two curve records needed
+        # to reproduce the reverse-transition defect without project data.
+        independent = super_batch.build_curves_from_presets(
+            [
+                {
+                    "pc_station_label": "149220.000000",
+                    "pt_station_label": "150305.043003",
+                    "radius_ft": 8800.0,
+                    "curve_direction": "left",
+                    "curve_name": "Curve 1",
+                    "alignment_name": "ML",
+                },
+                {
+                    "pc_station_label": "150395.043003",
+                    "pt_station_label": "151566.396245",
+                    "radius_ft": 9500.0,
+                    "curve_direction": "right",
+                    "curve_name": "Curve 2",
+                    "alignment_name": "ML",
+                },
+            ],
+            {
+                "speed": "65",
+                "facility": "centerline",
+                "area": "rural",
+                "lane_width": "12",
+                "lanes_rotated": "2",
+                "normal_crown": "0.02",
+            },
+        )
+        curves = super_batch.coordinate_reverse_curve_transitions(
+            independent, pairs=[[0, 1]],
+        )
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
+
+        self.assertEqual(check["status"], "coordinated")
+        self.assertAlmostEqual(check["available_tangent_ft"], 90.0, places=6)
+        self.assertAlmostEqual(check["minimum_tangent_ft"], 85.4, places=6)
+        self.assertEqual(check["transition_rate_status"], "standard")
+        self.assertLess(
+            check["lanes"]["left"]["handoff_station_ft"],
+            curves[0]["results"]["pt_ft"],
+        )
+        self.assertGreater(
+            check["lanes"]["right"]["handoff_station_ft"],
+            curves[1]["results"]["pc_ft"],
+        )
+
+        for side in ("left", "right"):
+            lane = check["lanes"][side]
+            points = sorted({
+                (float(event["station_ft"]), float(event["slope_pct"]))
+                for event in lane["profile_events"]
+            })
+            allowed_rates = {
+                round(float(lane["outgoing_rate_pct_per_ft"]), 10),
+                round(float(lane["incoming_rate_pct_per_ft"]), 10),
+            }
+            for start, end in zip(points, points[1:]):
+                distance = end[0] - start[0]
+                self.assertGreater(distance, 0.0)
+                segment_rate = abs(end[1] - start[1]) / distance
+                self.assertTrue(
+                    segment_rate <= 1e-9 or round(segment_rate, 10) in allowed_rates,
+                    (side, start, end, segment_rate, allowed_rates),
+                )
+
     def test_exact_minimum_reverse_tangent_keeps_standard_rate(self):
         curves = self.curves()
         prior, following = curves[:2]
