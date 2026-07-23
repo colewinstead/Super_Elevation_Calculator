@@ -8,6 +8,7 @@ from unittest import mock
 import super_service
 import super_batch
 import super_exports
+import super_qa
 import super_transition
 
 
@@ -277,6 +278,14 @@ class CorridorQATests(unittest.TestCase):
 
         for side in ("left", "right"):
             lane = check["lanes"][side]
+            self.assertEqual(lane["mode"], "normal_crown_hold")
+            self.assertIsNone(
+                super_qa._reverse_lane_issue(
+                    lane,
+                    curves[0]["results"]["pt_ft"],
+                    curves[1]["results"]["pc_ft"],
+                )
+            )
             points = sorted({
                 (float(event["station_ft"]), float(event["slope_pct"]))
                 for event in lane["profile_events"]

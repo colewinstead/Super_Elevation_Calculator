@@ -2,7 +2,7 @@
 
 ## Scope and source record
 
-This document records how calculation engine `1.2.3` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
+This document records how calculation engine `1.2.4` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
 
 The implementation was checked against these official MDOT sources:
 

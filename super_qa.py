@@ -23,7 +23,21 @@ def _reverse_lane_issue(lane: dict, tangent_start: float, tangent_end: float) ->
         incoming_rate = float(lane["incoming_rate_pct_per_ft"])
     except (KeyError, TypeError, ValueError):
         return "missing handoff or standard-rate metadata"
-    if not _within(handoff, tangent_start, tangent_end):
+    hold = lane.get("normal_crown_hold")
+    if hold:
+        try:
+            hold_start = float(hold["start_ft"])
+            hold_end = float(hold["end_ft"])
+            hold_length = float(hold["length_ft"])
+        except (KeyError, TypeError, ValueError):
+            return "normal-crown hold metadata is invalid"
+        if hold_end < hold_start - 1e-7:
+            return "normal-crown hold stations are reversed"
+        if not math.isclose(hold_length, max(0.0, hold_end - hold_start), rel_tol=1e-7, abs_tol=1e-6):
+            return "normal-crown hold length does not match its stations"
+        if not _within(handoff, hold_start, hold_end):
+            return "normal-crown hold handoff is outside the recorded hold"
+    elif not _within(handoff, tangent_start, tangent_end):
         return "handoff is outside the intervening tangent"
     if outgoing_rate <= 0.0 or incoming_rate <= 0.0:
         return "recorded standard rate is not positive"
