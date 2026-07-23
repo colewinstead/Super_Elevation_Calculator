@@ -2,7 +2,7 @@
 
 ## Scope and source record
 
-This document records how calculation engine `1.2.2` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
+This document records how calculation engine `1.2.3` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
 
 The implementation was checked against these official MDOT sources:
 
@@ -43,6 +43,7 @@ For each lane independently:
 - The incoming line is extended backward from its recorded full-super point at the incoming curve's signed standard rate.
 - If both lines occupy the same zero-to-normal-crown interval, they join at their station/slope intersection. The slope remains continuous, although unequal curve rates may produce a rate change at the handoff.
 - If the outgoing lane reaches normal crown first, it holds normal crown until the incoming standard-rate line begins.
+- A lane-specific normal-crown hold may fall partly or wholly outside the PT-to-PC tangent. Its outgoing and incoming standard-rate segments must still form one continuous profile through the tangent; the location of the hold's reporting midpoint is not a validity criterion.
 - At exactly `Tmin`, both lanes retain one shared 0% meeting station.
 - A longer tangent does not stretch either transition or slow its rate.
 - Every non-flat segment is linear and uses one of the two recorded standard rates.

@@ -1,8 +1,8 @@
 """Authoritative product and calculation-engine release identifiers."""
 
 APP_NAME = "Superelevation Calculator"
-APP_VERSION = "1.4.22"
-CALCULATION_ENGINE_VERSION = "1.2.2"
+APP_VERSION = "1.4.23"
+CALCULATION_ENGINE_VERSION = "1.2.3"
 
 
 def version_label() -> str:
