@@ -72,18 +72,20 @@ button:disabled { opacity: .48; cursor: not-allowed; transform: none; }
 .source-card .button { width: 100%; margin-bottom: 8px; }
 .source-card p { margin: 6px 0; color: var(--muted); font-size: .7rem; line-height: 1.45; }
 .source-card button { width: 100%; margin-top: 5px; }
-.source-card .reverse-curve-setting { align-items: flex-start; margin: 10px 0 6px; padding: 10px; border: 1px solid #29433a; border-radius: 7px; background: #0d1d18; line-height: 1.4; }
-.source-card .reverse-curve-setting input { margin-top: 2px; }
-.source-card .reverse-curve-setting strong { margin: 0 0 3px; color: var(--text); font-size: .72rem; }
-.source-card .reverse-curve-setting small { display: block; color: var(--muted); font-size: .64rem; font-weight: 500; }
+.source-card .reverse-curve-guidance { margin: 10px 0 0; padding: 10px; border: 1px solid #29433a; border-radius: 7px; background: #0d1d18; line-height: 1.45; }
+.source-card .reverse-curve-guidance strong { display: inline; color: var(--text); font-size: .72rem; }
 .curve-list { margin: 18px 0 10px; min-height: 210px; }
 .list-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .list-title h3, .lookup h3, .result-tabs h3 { margin: 0; font-size: .78rem; }
 .list-title span { font-family: var(--font-plex-mono), monospace; color: var(--muted); }
-.curve-list > button { width: 100%; display: grid; text-align: left; margin: 5px 0; }
-.curve-list > button strong { font-size: .75rem; }
-.curve-list > button span { color: var(--muted); font-size: .65rem; font-weight: 500; }
-.curve-list > button.selected { border-color: var(--teal); background: #11312a; }
+.curve-list-item > button { width: 100%; display: grid; text-align: left; margin: 5px 0; }
+.curve-list-item > button strong { font-size: .75rem; }
+.curve-list-item > button span { color: var(--muted); font-size: .65rem; font-weight: 500; }
+.curve-list-item > button.selected { border-color: var(--teal); background: #11312a; }
+.reverse-pair-link { margin: 4px 10px 8px; padding: 8px; border-left: 2px solid #355047; background: #0a1713; }
+.reverse-pair-link.linked { border-left-color: var(--teal); background: #0e251f; }
+.reverse-pair-link button { width: 100%; min-height: 32px; padding: 6px 8px; font-size: .68rem; }
+.reverse-pair-link small { display: block; margin-top: 5px; color: var(--muted); font-size: .6rem; line-height: 1.35; }
 .empty { padding: 20px 8px; color: var(--muted); text-align: center; font-size: .74rem; line-height: 1.5; border: 1px dashed #30453e; border-radius: 8px; }
 .form-grid, .advanced-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .full { grid-column: 1 / -1; }

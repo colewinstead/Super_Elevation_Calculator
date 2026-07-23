@@ -61,7 +61,7 @@ Deferred while the desktop edition is Coming soon. Run the manual macOS Build wo
 - [ ] Run `npm ci`, `npm exec tsc -- --noEmit`, and `npm test` from `web`; retain the Pyodide parity output.
 - [ ] Open the production build on desktop and mobile-width browsers; verify calculation, project open/save, LandXML replacement warning, lookup, and all exports.
 - [ ] Confirm the browser network log shows no project/LandXML upload or calculation API calls.
-- [ ] Open one schema-v4 project in both browser and desktop versions and verify calculations, embedded LandXML integrity, metadata, and export results.
+- [ ] Open one schema-v5 project in the browser and verify calculations, explicit reverse-curve pairs, embedded LandXML integrity, metadata, and export results.
 - [ ] Publish the exact validated commit and verify the public URL before announcing it.
 
 ## Delivery and support

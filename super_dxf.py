@@ -38,12 +38,14 @@ DEFAULT_CONFIG = {
         "overlay_leader": "ALI_DESIGN_ML_LABELS",
         "overlay_station": "ALI_DESIGN_ML_STA",
         "overlay_text": "ALI_DESIGN_ML_LABELS_TX",
+        "reverse_transition": "ALI_DESIGN_ML_SE_REVERSE",
     },
     "overlay_layer_styles": {
         "ALI_DESIGN_ML_CURVES": {"color": 8, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS": {"color": 10, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_STA": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS_TX": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
+        "ALI_DESIGN_ML_SE_REVERSE": {"color": 3, "linetype": "CONTINUOUS", "lineweight": 40},
     },
 }
 
@@ -498,6 +500,7 @@ def build_overlay_drawing(
     cfg = _cfg(config)
     writer = DxfWriter()
     warnings = list(landxml.warnings)
+    drawn_reverse_events: set[tuple[str, str, str, float]] = set()
 
     for segment in landxml._segments:
         if isinstance(segment, super_landxml.LineSegment):
@@ -535,6 +538,18 @@ def build_overlay_drawing(
 
         for row_index, row in enumerate(rows):
             station = float(row["station"])
+            reverse_pair_id = str(row.get("reverse_pair_id") or "")
+            reverse_critical = bool(row.get("reverse_pair_critical") and reverse_pair_id)
+            if reverse_critical:
+                reverse_key = (
+                    reverse_pair_id,
+                    str(row.get("side") or ""),
+                    str(row.get("event_type") or ""),
+                    round(station, 6),
+                )
+                if reverse_key in drawn_reverse_events:
+                    continue
+                drawn_reverse_events.add(reverse_key)
             try:
                 x, y = landxml.xy_at_station(station)
                 tx, ty = landxml.tangent_at_station(station)
@@ -550,6 +565,20 @@ def build_overlay_drawing(
             ny = tx * lane_sign
             ux, uy, rotation = _upright_text_axis(nx, ny)
             station_label = _overlay_station_label(row, curve)
+            if reverse_critical:
+                station_label = f"{lane_side.upper()} {row['event_type']} {station_label}"
+            leader_layer = (
+                cfg["layers"]["reverse_transition"]
+                if reverse_critical else cfg["layers"]["overlay_leader"]
+            )
+            station_layer = (
+                cfg["layers"]["reverse_transition"]
+                if reverse_critical else cfg["layers"]["overlay_station"]
+            )
+            text_layer = (
+                cfg["layers"]["reverse_transition"]
+                if reverse_critical else cfg["layers"]["overlay_text"]
+            )
             callout_preview = {
                 "group_id": f"curve-{curve_index}-row-{row_index}",
                 "curve_index": curve_index,
@@ -570,7 +599,7 @@ def build_overlay_drawing(
                 y,
                 elbow_x,
                 elbow_y,
-                cfg["layers"]["overlay_leader"],
+                leader_layer,
                 preview=callout_preview,
             )
             if math.hypot(end_x - elbow_x, end_y - elbow_y) > 0.001:
@@ -579,7 +608,7 @@ def build_overlay_drawing(
                     elbow_y,
                     end_x,
                     end_y,
-                    cfg["layers"]["overlay_leader"],
+                    leader_layer,
                     preview=callout_preview,
                 )
 
@@ -598,7 +627,7 @@ def build_overlay_drawing(
                 station_y,
                 station_label,
                 cfg["text_height"],
-                cfg["layers"]["overlay_station"],
+                station_layer,
                 rotation=rotation,
                 alignment=text_alignment,
                 text_style=cfg["overlay_text_style"],
@@ -609,7 +638,7 @@ def build_overlay_drawing(
                 slope_y,
                 row["slope_label"],
                 cfg["text_height"],
-                cfg["layers"]["overlay_text"],
+                text_layer,
                 rotation=rotation,
                 alignment=text_alignment,
                 text_style=cfg["overlay_text_style"],

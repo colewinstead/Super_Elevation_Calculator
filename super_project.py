@@ -11,7 +11,7 @@ from app_info import APP_VERSION, CALCULATION_ENGINE_VERSION
 from criteria_info import criteria_metadata
 
 
-PROJECT_VERSION = 4
+PROJECT_VERSION = 5
 
 
 class ProjectFormatError(ValueError):
@@ -81,7 +81,8 @@ def normalize_project(data: dict[str, Any]) -> dict[str, Any]:
             f"{PROJECT_VERSION}. Install a newer application release to open it safely."
         )
 
-    vars_data = data.get("vars", {}) if isinstance(data.get("vars", {}), dict) else {}
+    vars_data = dict(data.get("vars", {})) if isinstance(data.get("vars", {}), dict) else {}
+    vars_data.pop("coordinate_reverse_curves", None)
     curves = []
     raw_curves = data.get("curves", []) or []
     if not isinstance(raw_curves, list):
@@ -110,6 +111,48 @@ def normalize_project(data: dict[str, Any]) -> dict[str, Any]:
             raise ProjectFormatError("Excluded LandXML curve indexes must be integers.") from exc
         if normalized_index >= 0:
             excluded_curve_indexes.add(normalized_index)
+
+    migration_warnings: list[str] = []
+    raw_pairs = data.get("reverse_curve_pairs")
+    if raw_pairs is None and version < 5:
+        inferred: set[tuple[int, int]] = set()
+        for curve in curves:
+            coordination = ((curve.get("results") or {}).get("reverse_curve_coordination") or {})
+            for check in coordination.get("checks", []) or []:
+                indexes = check.get("paired_curve_indexes")
+                if isinstance(indexes, list) and len(indexes) == 2:
+                    try:
+                        inferred.add((int(indexes[0]), int(indexes[1])))
+                    except (TypeError, ValueError):
+                        continue
+        raw_pairs = [list(pair) for pair in sorted(inferred)]
+    if raw_pairs is None:
+        raw_pairs = []
+    if not isinstance(raw_pairs, list):
+        raise ProjectFormatError("Project 'reverse_curve_pairs' must be a list.")
+    reverse_curve_pairs: list[list[int]] = []
+    paired_indexes: set[int] = set()
+    for raw_pair in raw_pairs:
+        if not isinstance(raw_pair, (list, tuple)) or len(raw_pair) != 2:
+            raise ProjectFormatError("Each reverse-curve pair must contain exactly two curve indexes.")
+        try:
+            prior_index, following_index = int(raw_pair[0]), int(raw_pair[1])
+        except (TypeError, ValueError) as exc:
+            raise ProjectFormatError("Reverse-curve pair indexes must be integers.") from exc
+        if prior_index < 0 or following_index >= len(curves):
+            raise ProjectFormatError("Reverse-curve pair indexes are outside the calculated curve set.")
+        if following_index != prior_index + 1:
+            raise ProjectFormatError("Reverse-curve pairs must contain adjacent curves in increasing order.")
+        if prior_index in paired_indexes or following_index in paired_indexes:
+            if version < 5:
+                migration_warnings.append(
+                    f"Legacy reverse-curve link {prior_index + 1}-{following_index + 1} was not restored "
+                    "because one curve already belongs to another pair."
+                )
+                continue
+            raise ProjectFormatError("A curve cannot belong to more than one reverse-curve pair.")
+        paired_indexes.update((prior_index, following_index))
+        reverse_curve_pairs.append([prior_index, following_index])
     return {
         "version": PROJECT_VERSION,
         "source_version": version,
@@ -124,11 +167,13 @@ def normalize_project(data: dict[str, Any]) -> dict[str, Any]:
         "project_notes": data.get("project_notes", ""),
         "landxml_source": landxml_source,
         "excluded_landxml_curve_indexes": sorted(excluded_curve_indexes),
+        "reverse_curve_pairs": reverse_curve_pairs,
+        "migration_warnings": migration_warnings,
     }
 
 
 def make_landxml_source(filename: str, content: str) -> dict[str, str]:
-    """Create the portable, integrity-checked LandXML record used by schema v4."""
+    """Create the portable, integrity-checked LandXML record introduced in schema v4."""
     if not isinstance(content, str) or not content.strip():
         raise ProjectFormatError("Embedded LandXML content must be non-empty text.")
     safe_name = Path(str(filename or "alignment.xml")).name or "alignment.xml"

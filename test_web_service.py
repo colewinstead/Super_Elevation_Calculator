@@ -53,26 +53,59 @@ class WebServiceTests(unittest.TestCase):
         self.assertEqual(parsed["summary"]["coordinate_system"]["code"], "6507")
         self.assertTrue(parsed["summary"]["coordinate_system"]["preserve_xy"])
 
-    def test_schema_v4_project_round_trip_embeds_landxml(self):
+    def test_schema_v5_project_round_trip_embeds_landxml_and_pairs(self):
         content = FIXTURE.read_text(encoding="utf-8")
         source = super_project.make_landxml_source(FIXTURE.name, content)
         serialized = super_service.project_save({
-            "version": 4,
+            "version": 5,
             "vars": self.inputs(),
             "landxml_source": source,
             "excluded_landxml_curve_indexes": [1],
+            "curves": [{}, {}],
+            "reverse_curve_pairs": [[0, 1]],
         })
         loaded = super_service.project_load(serialized)
-        self.assertEqual(loaded["project"]["version"], 4)
+        self.assertEqual(loaded["project"]["version"], 5)
         self.assertEqual(loaded["project"]["landxml_source"]["sha256"], source["sha256"])
         self.assertEqual(loaded["landxml"]["source"]["content"], content)
         self.assertEqual(loaded["project"]["excluded_landxml_curve_indexes"], [1])
+        self.assertEqual(loaded["project"]["reverse_curve_pairs"], [[0, 1]])
 
     def test_embedded_landxml_hash_mismatch_is_refused(self):
         with self.assertRaisesRegex(super_project.ProjectFormatError, "integrity"):
             super_project.normalize_project({
-                "version": 4,
+                "version": 5,
                 "landxml_source": {"filename": "a.xml", "encoding": "utf-8", "sha256": "0" * 64, "content": "<LandXML />"},
+            })
+
+    def test_schema_v4_infers_disjoint_pairs_without_recalculating_results(self):
+        recorded = {
+            "calculation_metadata": {"engine_version": "1.2.1"},
+            "reverse_curve_coordination": {
+                "checks": [{"paired_curve_indexes": [0, 1], "status": "coordinated"}],
+            },
+        }
+        loaded = super_project.normalize_project({
+            "version": 4,
+            "vars": {"coordinate_reverse_curves": True},
+            "curves": [
+                {"results": recorded},
+                {"results": {"recorded_value": 123.456}},
+            ],
+        })
+        self.assertEqual(loaded["version"], 5)
+        self.assertEqual(loaded["source_version"], 4)
+        self.assertEqual(loaded["reverse_curve_pairs"], [[0, 1]])
+        self.assertNotIn("coordinate_reverse_curves", loaded["vars"])
+        self.assertEqual(loaded["curves"][0]["results"], recorded)
+        self.assertEqual(loaded["curves"][1]["results"]["recorded_value"], 123.456)
+
+    def test_schema_v5_rejects_overlapping_pair_chain(self):
+        with self.assertRaisesRegex(super_project.ProjectFormatError, "more than one"):
+            super_project.normalize_project({
+                "version": 5,
+                "curves": [{}, {}, {}],
+                "reverse_curve_pairs": [[0, 1], [1, 2]],
             })
 
     def test_safe_dispatch_returns_friendly_project_error_without_traceback(self):

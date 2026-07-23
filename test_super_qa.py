@@ -8,6 +8,7 @@ from unittest import mock
 import super_service
 import super_batch
 import super_exports
+import super_transition
 
 
 FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "sr82_synthetic.xml"
@@ -140,101 +141,89 @@ class CorridorQATests(unittest.TestCase):
         finding = next(item for item in report["findings"] if item["code"] == "SHORT_TANGENT")
         self.assertIn("zero-slope reverse-curve recovery", finding["message"])
 
-    def test_reverse_curve_coordination_uses_one_proportional_zero_meeting(self):
-        curves = super_service.build_all_landxml_curves(
-            self.content,
-            FIXTURE.name,
-            {
-                "speed": "45", "facility": "centerline", "area": "rural",
-                "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
-                "coordinate_reverse_curves": "true",
-            },
+    def test_build_all_keeps_curves_independent_until_explicitly_paired(self):
+        curves = self.curves()
+        self.assertNotIn("reverse_curve_coordination", curves[0]["results"])
+        coordinated = super_batch.coordinate_reverse_curve_transitions(curves, pairs=[[0, 1]])
+        self.assertEqual(
+            coordinated[0]["results"]["reverse_curve_coordination"]["checks"][0]["paired_curve_indexes"],
+            [0, 1],
         )
+
+    def test_reverse_curve_pair_uses_standard_rate_and_preserves_independent_results(self):
+        independent = self.curves()
+        curves = super_batch.coordinate_reverse_curve_transitions(independent, pairs=[[0, 1]])
         prior, following = curves[:2]
         prior_results = prior["results"]
         following_results = following["results"]
         check = prior_results["reverse_curve_coordination"]["checks"][0]
-        expected_meeting = prior_results["pt_ft"] + check["available_tangent_ft"] * (
-            0.7 * prior_results["Lr"] / check["minimum_tangent_ft"]
-        )
-        self.assertAlmostEqual(prior_results["reverse_curve_exit_zero_ft"], expected_meeting)
-        self.assertAlmostEqual(following_results["reverse_curve_entry_zero_ft"], expected_meeting)
         self.assertAlmostEqual(prior_results["full_super_out_ft"], prior_results["pt_ft"] - 0.3 * prior_results["Lr"])
         self.assertAlmostEqual(following_results["full_super_ft"], following_results["pc_ft"] + 0.3 * following_results["Lr"])
         self.assertEqual(check["status"], "coordinated")
-        self.assertEqual(check["transition_rate_status"], "slower_than_standard")
-        self.assertAlmostEqual(check["meeting_station_ft"], expected_meeting)
+        self.assertEqual(check["transition_rate_status"], "standard")
         self.assertAlmostEqual(
             check["minimum_tangent_ft"],
             0.7 * prior_results["Lr"] + 0.7 * following_results["Lr"],
         )
-
-        for curve in (prior, following):
-            left_rows, right_rows = super_exports.build_lane_rows(
-                curve["results"], curve["meta"]["curve_direction"], station_format=False,
-            )
-            for rows in (left_rows, right_rows):
-                zeros = {
-                    row["station_ft"] for row in rows
-                    if row["slope_pct"] == 0.0
-                    and prior_results["pt_ft"] <= row["station_ft"] <= following_results["pc_ft"]
-                }
-                self.assertEqual(zeros, {expected_meeting})
+        for side in ("left", "right"):
+            lane = check["lanes"][side]
+            points = sorted({
+                (float(event["station_ft"]), float(event["slope_pct"]))
+                for event in lane["profile_events"]
+            })
+            self.assertGreaterEqual(len(points), 4)
+            allowed_rates = {
+                round(float(lane["outgoing_rate_pct_per_ft"]), 10),
+                round(float(lane["incoming_rate_pct_per_ft"]), 10),
+            }
+            for start, end in zip(points, points[1:]):
+                distance = end[0] - start[0]
+                self.assertGreater(distance, 0.0)
+                segment_rate = abs(end[1] - start[1]) / distance
+                self.assertTrue(
+                    segment_rate <= 1e-9 or round(segment_rate, 10) in allowed_rates,
+                    (side, start, end, segment_rate, allowed_rates),
+                )
 
         report = super_service.corridor_qa(self.content, FIXTURE.name, curves)
         codes = {finding["code"] for finding in report["findings"]}
         self.assertNotIn("SHORT_TANGENT", codes)
         self.assertNotIn("SHORT_REVERSE_TANGENT", codes)
-        self.assertIn("NONSTANDARD_REVERSE_TRANSITION_RATE", codes)
-        self.assertEqual(report["status"], "review")
+        self.assertNotIn("NONSTANDARD_REVERSE_TRANSITION_RATE", codes)
 
         restored = super_batch.coordinate_reverse_curve_transitions(curves, enabled=False)
-        self.assertNotIn("reverse_curve_exit_zero_ft", restored[0]["results"])
-        self.assertNotIn("reverse_curve_entry_zero_ft", restored[1]["results"])
         self.assertNotIn("reverse_curve_coordination", restored[0]["results"])
-        self.assertAlmostEqual(restored[0]["results"]["full_super_out_ft"], prior_results["full_super_out_ft"])
+        self.assertEqual(restored, independent)
 
-    def test_latest_cw_reverse_curve_has_single_linear_zero_meeting(self):
+    def test_latest_cw_reverse_curve_uses_standard_rate_and_normal_crown_holds(self):
         content = CW_FIXTURE.read_text(encoding="utf-8")
-        curves = super_service.build_all_landxml_curves(
+        independent = super_service.build_all_landxml_curves(
             content,
             CW_FIXTURE.name,
             {
                 "speed": "65", "facility": "centerline", "area": "rural",
                 "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
-                "coordinate_reverse_curves": "true",
             },
         )
+        curves = super_batch.coordinate_reverse_curve_transitions(independent, pairs=[[0, 1]])
         self.assertEqual(len(curves), 2)
-        prior, following = curves
-        check = prior["results"]["reverse_curve_coordination"]["checks"][0]
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
         self.assertEqual(check["status"], "coordinated")
         self.assertAlmostEqual(check["available_tangent_ft"], 123.0, places=3)
         self.assertAlmostEqual(check["minimum_tangent_ft"], 86.1, places=3)
-        self.assertEqual(check["transition_rate_status"], "slower_than_standard")
-        self.assertAlmostEqual(check["transition_length_factor"], 1.3, places=6)
-        self.assertAlmostEqual(
-            following["results"]["reverse_curve_entry_zero_ft"],
-            prior["results"]["reverse_curve_exit_zero_ft"],
-            places=6,
-        )
-        self.assertAlmostEqual(check["meeting_station_ft"], prior["results"]["pt_ft"] + 56.0, places=6)
-
-        left_rows, right_rows = super_exports.build_lane_rows(
-            following["results"], following["meta"]["curve_direction"], station_format=False,
-        )
-        for rows in (left_rows, right_rows):
-            entry_labels = {row["label"] for row in rows if row["station_ft"] < following["results"]["full_super_ft"]}
-            self.assertNotIn("NC", entry_labels)
-            self.assertNotIn("BEGIN ROTATION", entry_labels)
-        pc_slopes = [abs(next(row for row in rows if row["label"] == "PC")["slope_pct"]) for rows in (left_rows, right_rows)]
-        expected_pc_slope = abs(following["results"]["e"] * 100.0) / check["transition_length_factor"]
-        self.assertTrue(all(abs(slope - expected_pc_slope) < 1e-9 for slope in pc_slopes))
+        self.assertEqual(check["transition_rate_status"], "standard")
+        for side in ("left", "right"):
+            lane = check["lanes"][side]
+            self.assertEqual(lane["mode"], "normal_crown_hold")
+            self.assertGreater(lane["normal_crown_hold"]["length_ft"], 0.0)
+            self.assertAlmostEqual(lane["handoff_slope_pct"], -2.0)
+            self.assertGreaterEqual(len(lane["zero_stations_ft"]), 1)
 
         report = super_service.corridor_qa(content, CW_FIXTURE.name, curves)
-        finding = next(item for item in report["findings"] if item["code"] == "NONSTANDARD_REVERSE_TRANSITION_RATE")
-        self.assertEqual(finding["severity"], "review")
-        self.assertIn("meet once at 0%", finding["details"])
+        self.assertNotIn(
+            "NONSTANDARD_REVERSE_TRANSITION_RATE",
+            {finding["code"] for finding in report["findings"]},
+        )
 
     def test_exact_minimum_reverse_tangent_keeps_standard_rate(self):
         curves = self.curves()
@@ -243,15 +232,17 @@ class CorridorQATests(unittest.TestCase):
         following["results"]["pc_ft"] = prior["results"]["pt_ft"] + required
         following["results"]["full_super_ft"] = following["results"]["pc_ft"] + 0.3 * following["results"]["Lr"]
 
-        coordinated = super_batch.coordinate_reverse_curve_transitions(curves)
+        coordinated = super_batch.coordinate_reverse_curve_transitions(curves, pairs=[[0, 1]])
         check = coordinated[0]["results"]["reverse_curve_coordination"]["checks"][0]
         self.assertEqual(check["status"], "coordinated")
         self.assertEqual(check["transition_rate_status"], "standard")
-        self.assertAlmostEqual(check["transition_length_factor"], 1.0)
-        self.assertAlmostEqual(
-            coordinated[0]["results"]["reverse_curve_exit_zero_ft"],
-            coordinated[1]["results"]["reverse_curve_entry_zero_ft"],
-        )
+        self.assertEqual({check["lanes"][side]["mode"] for side in ("left", "right")}, {"single_zero"})
+        meeting_stations = {
+            round(check["lanes"][side]["handoff_station_ft"], 7)
+            for side in ("left", "right")
+        }
+        self.assertEqual(len(meeting_stations), 1)
+        self.assertTrue(all(abs(check["lanes"][side]["handoff_slope_pct"]) < 1e-9 for side in ("left", "right")))
         prior_rows = super_exports.build_lane_rows(
             coordinated[0]["results"], coordinated[0]["meta"]["curve_direction"], station_format=False,
         )
@@ -269,12 +260,96 @@ class CorridorQATests(unittest.TestCase):
             for rows in following_rows
         ))
 
+    def test_unequal_rates_produce_continuous_partial_slope_handoff(self):
+        prior = {
+            "full_super_out_ft": 0.0,
+            "pt_ft": 30.0,
+            "Lr": 100.0,
+            "e": 0.06,
+            "crown_state": "SUPERELEVATION",
+            "inputs": {"normal_crown": 0.02},
+        }
+        following = {
+            "full_super_ft": 205.0,
+            "pc_ft": 175.0,
+            "Lr": 100.0,
+            "e": 0.04,
+            "crown_state": "SUPERELEVATION",
+            "inputs": {"normal_crown": 0.02},
+        }
+        plan = super_transition.build_reverse_pair_plan(
+            prior, "left", following, "right",
+            pair_id="reverse-pair-test", exact_minimum=False,
+        )
+        intersection_lane = next(
+            lane for lane in plan["lanes"].values()
+            if lane["mode"] == "standard_rate_intersection"
+        )
+        self.assertAlmostEqual(intersection_lane["handoff_station_ft"], 90.0)
+        self.assertAlmostEqual(intersection_lane["handoff_slope_pct"], -0.6)
+        self.assertIsNone(intersection_lane["normal_crown_hold"])
+        plateau_lane = next(
+            lane for lane in plan["lanes"].values()
+            if lane["mode"] == "normal_crown_hold"
+        )
+        self.assertGreater(plateau_lane["normal_crown_hold"]["length_ft"], 0.0)
+
+        mirrored = super_transition.build_reverse_pair_plan(
+            prior, "right", following, "left",
+            pair_id="reverse-pair-mirrored", exact_minimum=False,
+        )
+        mirrored_intersection = next(
+            lane for lane in mirrored["lanes"].values()
+            if lane["mode"] == "standard_rate_intersection"
+        )
+        self.assertAlmostEqual(mirrored_intersection["handoff_station_ft"], 90.0)
+        self.assertAlmostEqual(mirrored_intersection["handoff_slope_pct"], -0.6)
+
+    def test_pair_indexes_must_be_adjacent_and_disjoint(self):
+        curves = self.curves()
+        duplicated = curves + copy.deepcopy(curves)
+        with self.assertRaisesRegex(ValueError, "adjacent"):
+            super_batch.coordinate_reverse_curve_transitions(duplicated, pairs=[[0, 2]])
+        with self.assertRaisesRegex(ValueError, "more than one"):
+            super_batch.coordinate_reverse_curve_transitions(duplicated, pairs=[[0, 1], [1, 2]])
+
+    def test_independent_pairs_are_coordinated_without_linking_the_gap_between_them(self):
+        base = self.curves()
+        curves = base + copy.deepcopy(base)
+        offset = curves[1]["results"]["pt_ft"] + 500.0 - curves[2]["results"]["pc_ft"]
+        for key in (
+            "pc_ft", "pt_ft", "pnc_ft", "reverse_crown_ft", "full_super_ft",
+            "full_super_out_ft", "reverse_crown_out_ft", "pnc_out_ft",
+        ):
+            if curves[2]["results"].get(key) is not None:
+                curves[2]["results"][key] += offset
+            if curves[3]["results"].get(key) is not None:
+                curves[3]["results"][key] += offset
+        coordinated = super_batch.coordinate_reverse_curve_transitions(
+            curves, pairs=[[0, 1], [2, 3]],
+        )
+        self.assertEqual(
+            coordinated[0]["results"]["reverse_curve_coordination"]["checks"][0]["paired_curve_indexes"],
+            [0, 1],
+        )
+        self.assertEqual(
+            {
+                tuple(check["paired_curve_indexes"])
+                for check in coordinated[1]["results"]["reverse_curve_coordination"]["checks"]
+            },
+            {(0, 1)},
+        )
+        self.assertEqual(
+            coordinated[2]["results"]["reverse_curve_coordination"]["checks"][0]["paired_curve_indexes"],
+            [2, 3],
+        )
+
     def test_short_reverse_tangent_blocks_without_moving_runoff(self):
         curves = self.curves()
         prior, following = curves[:2]
         following["results"]["pc_ft"] = prior["results"]["pt_ft"] + 10.0
         following["results"]["full_super_ft"] = following["results"]["pc_ft"] + 0.3 * following["results"]["Lr"]
-        coordinated = super_batch.coordinate_reverse_curve_transitions(curves)
+        coordinated = super_batch.coordinate_reverse_curve_transitions(curves, pairs=[[0, 1]])
         self.assertNotIn("exit", coordinated[0]["results"]["reverse_curve_coordination"])
         self.assertNotIn("entry", coordinated[1]["results"]["reverse_curve_coordination"])
         self.assertNotIn("reverse_curve_exit_zero_ft", coordinated[0]["results"])
@@ -283,6 +358,21 @@ class CorridorQATests(unittest.TestCase):
         finding = next(item for item in report["findings"] if item["code"] == "SHORT_REVERSE_TANGENT")
         self.assertEqual(finding["severity"], "block")
         self.assertIn("0.7Lr(exit) + 0.7Lr(entry)", finding["details"])
+
+    def test_corridor_qa_blocks_nonstandard_or_discontinuous_pair_metadata(self):
+        curves = super_batch.coordinate_reverse_curve_transitions(self.curves(), pairs=[[0, 1]])
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        original_full_super = curves[0]["results"]["full_super_out_ft"]
+        check["lanes"]["left"]["profile_events"][1]["slope_pct"] += 0.5
+        curves[1]["results"]["reverse_curve_coordination"]["checks"][0] = copy.deepcopy(check)
+
+        report = super_service.corridor_qa(self.content, FIXTURE.name, curves)
+        finding = next(
+            item for item in report["findings"]
+            if item["code"] == "NONSTANDARD_REVERSE_TRANSITION"
+        )
+        self.assertEqual(finding["severity"], "block")
+        self.assertEqual(curves[0]["results"]["full_super_out_ft"], original_full_super)
 
     def test_normal_crown_curve_does_not_require_transition_recovery_events(self):
         curves = copy.deepcopy(self.curves())

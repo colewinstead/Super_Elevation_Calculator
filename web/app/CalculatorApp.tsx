@@ -56,7 +56,6 @@ const INITIAL_INPUTS: Dict = {
   alignment_station_range: "",
   curve_notes: "",
   station_format: true,
-  coordinate_reverse_curves: false,
 };
 
 function download(name: string, value: string | Uint8Array, type: string) {
@@ -147,6 +146,7 @@ export default function CalculatorApp() {
   const [landxml, setLandxml] = useState<Dict | null>(null);
   const [landxmlPreset, setLandxmlPreset] = useState(0);
   const [excludedCurveIndexes, setExcludedCurveIndexes] = useState<number[]>([]);
+  const [reverseCurvePairs, setReverseCurvePairs] = useState<number[][]>([]);
   const [calculationRequest, setCalculationRequest] = useState(0);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [lookupStation, setLookupStation] = useState("");
@@ -435,27 +435,44 @@ export default function CalculatorApp() {
     }
   };
 
-  const coordinateCurveSet = async (nextCurves: Dict[], enabled = Boolean(inputs.coordinate_reverse_curves)) => {
+  const coordinateCurveSet = async (nextCurves: Dict[], pairs = reverseCurvePairs) => {
     if (!nextCurves.length) return nextCurves;
     return await run("Coordinating reverse curves", () => call("coordinate_reverse_curves", {
       curves: nextCurves,
-      enabled,
+      enabled: true,
+      pairs,
     }));
   };
 
-  const changeReverseCurveCoordination = async (enabled: boolean) => {
+  const toggleReverseCurvePair = async (priorIndex: number) => {
     if (!requestCapability(CAPABILITIES.multiCurve)) return;
-    const coordinated = curves.length ? await coordinateCurveSet(curves, enabled) : curves;
+    const pair = [priorIndex, priorIndex + 1];
+    const linked = reverseCurvePairs.some(([first, second]) => first === pair[0] && second === pair[1]);
+    const nextPairs = linked
+      ? reverseCurvePairs.filter(([first, second]) => first !== pair[0] || second !== pair[1])
+      : [...reverseCurvePairs, pair].sort((left, right) => left[0] - right[0]);
+    if (!linked && reverseCurvePairs.some(([first, second]) =>
+      first === pair[0] || first === pair[1] || second === pair[0] || second === pair[1]
+    )) {
+      setError("A curve can belong to only one reverse-curve pair. Unlink the neighboring pair first.");
+      return;
+    }
+    const coordinated = curves.length ? await coordinateCurveSet(curves, nextPairs) : curves;
     if (coordinated == null) return;
-    setInputs((current) => ({ ...current, coordinate_reverse_curves: enabled }));
+    setReverseCurvePairs(nextPairs);
     setCurves(coordinated);
     if (selectedCurve >= 0 && coordinated[selectedCurve]) {
       await loadCurveFrom(coordinated[selectedCurve], selectedCurve);
     }
     setDirty(true);
-    setNotice(enabled
-      ? "Eligible opposite-direction MDOT curves omit tangent runout between them. Each runoff keeps its 30/70 placement; any extra tangent remains level at 0%."
-      : "Restored the standard runoff and tangent-runout transitions.");
+    const pairCheck = coordinated[pair[0]]?.results?.reverse_curve_coordination?.checks?.find(
+      (check: Dict) => check.paired_curve_indexes?.[0] === pair[0] && check.paired_curve_indexes?.[1] === pair[1]
+    );
+    setNotice(linked
+      ? `Unlinked Curves ${pair[0] + 1} and ${pair[1] + 1}; their independent transitions were restored.`
+      : pairCheck?.status === "coordinated"
+        ? `Linked Curves ${pair[0] + 1} and ${pair[1] + 1} with lane-specific standard-rate transitions.`
+        : `Linked Curves ${pair[0] + 1} and ${pair[1] + 1}, but coordination is blocked. Their independent results remain unchanged; review Corridor QA.`);
   };
 
   const addCurve = async () => {
@@ -487,9 +504,19 @@ export default function CalculatorApp() {
     if (selectedCurve < 0) return setError("Select a calculated curve before removing it.");
     const removed = curves[selectedCurve];
     const sourceIndex = removed?.meta?.landxml_curve_index;
-    const nextCurves = await coordinateCurveSet(curves.filter((_, index) => index !== selectedCurve));
+    const remappedPairs = reverseCurvePairs
+      .filter(([first, second]) => first !== selectedCurve && second !== selectedCurve)
+      .map(([first, second]) => [
+        first > selectedCurve ? first - 1 : first,
+        second > selectedCurve ? second - 1 : second,
+      ]);
+    const nextCurves = await coordinateCurveSet(
+      curves.filter((_, index) => index !== selectedCurve),
+      remappedPairs,
+    );
     if (!nextCurves) return;
     setCurves(nextCurves);
+    setReverseCurvePairs(remappedPairs);
     if (sourceIndex != null) {
       setExcludedCurveIndexes((current) => [...new Set([...current, Number(sourceIndex)])].sort((a, b) => a - b));
     }
@@ -552,6 +579,7 @@ export default function CalculatorApp() {
     }));
     if (result) {
       setCurves(result);
+      setReverseCurvePairs([]);
       setExcludedCurveIndexes([]);
       setSelectedCurve(result.length ? 0 : -1);
       if (result.length) await loadCurveFrom(result[0], 0);
@@ -574,13 +602,14 @@ export default function CalculatorApp() {
     }
     if (!target) return;
     const project = {
-      version: 4,
+      version: 5,
       application_version: manifest?.application_version,
       calculation_engine_version: manifest?.calculation_engine_version,
       criteria: calculation?.results?.calculation_metadata?.criteria || manifest?.criteria,
-      vars: inputs,
+      vars: Object.fromEntries(Object.entries(inputs).filter(([key]) => key !== "coordinate_reverse_curves")),
       curves,
       excluded_landxml_curve_indexes: excludedCurveIndexes,
+      reverse_curve_pairs: reverseCurvePairs,
       last_results: calculation?.results || null,
       last_meta: meta,
       landxml_source: landxml?.source || null,
@@ -622,6 +651,7 @@ export default function CalculatorApp() {
     const restoredCurves = loaded.project.curves || [];
     setInputs(restoredInputs);
     setCurves(restoredCurves);
+    setReverseCurvePairs(loaded.project.reverse_curve_pairs || []);
     setExcludedCurveIndexes(loaded.project.excluded_landxml_curve_indexes || []);
     setLandxml(loaded.landxml || null);
 
@@ -647,7 +677,11 @@ export default function CalculatorApp() {
       setSelectedCurve(-1);
     }
     setDirty(false);
-    setNotice(`Opened ${file.name}${loaded.landxml ? " with embedded LandXML" : ""}.`);
+    const migrationWarnings = loaded.project.migration_warnings || [];
+    setNotice(
+      `Opened ${file.name}${loaded.landxml ? " with embedded LandXML" : ""}.`
+      + (migrationWarnings.length ? ` ${migrationWarnings.join(" ")}` : "")
+    );
   };
 
   const loadSampleCalculation = () => {
@@ -664,6 +698,7 @@ export default function CalculatorApp() {
     });
     setCalculation(null);
     setCurves([]);
+    setReverseCurvePairs([]);
     setLandxml(null);
     setLandxmlPreset(0);
     setSelectedCurve(-1);
@@ -676,7 +711,7 @@ export default function CalculatorApp() {
 
   const newProject = () => {
     if (dirty && !window.confirm("Discard the unsaved working project?")) return;
-    setInputs(INITIAL_INPUTS); setCalculation(null); setCurves([]); setLandxml(null); setLandxmlPreset(0); setSelectedCurve(-1); setExcludedCurveIndexes([]);
+    setInputs(INITIAL_INPUTS); setCalculation(null); setCurves([]); setReverseCurvePairs([]); setLandxml(null); setLandxmlPreset(0); setSelectedCurve(-1); setExcludedCurveIndexes([]);
     setLookupResult(null); setError(""); setNotice(""); setDirty(false);
   };
 
@@ -716,6 +751,7 @@ export default function CalculatorApp() {
     const available = exportCurves();
     if (!available.length) return setError("Run a calculation before exporting.");
     const payload: Dict = { curves: available };
+    if (operation === "export_pdf" && corridorQa) payload.corridor_qa = corridorQa;
     if (operation === "export_overlay_dxf") {
       if (!landxml) return setError("Select LandXML before exporting an overlay DXF.");
       payload.landxml_source = landxml.source;
@@ -771,6 +807,31 @@ export default function CalculatorApp() {
   const qaHighlights = (corridorQa?.findings || []).filter((finding: Dict) =>
     finding.start_ft != null && finding.end_ft != null
   );
+  const linkedGap = (index: number) => reverseCurvePairs.some(
+    ([first, second]) => first === index && second === index + 1
+  );
+  const gapConflict = (index: number) => reverseCurvePairs.some(
+    ([first, second]) =>
+      (first === index || second === index || first === index + 1 || second === index + 1)
+      && !(first === index && second === index + 1)
+  );
+  const reversePairCheck = (index: number) => (
+    curves[index]?.results?.reverse_curve_coordination?.checks || []
+  ).find((check: Dict) =>
+    check.paired_curve_indexes?.[0] === index && check.paired_curve_indexes?.[1] === index + 1
+  );
+  const pairStatusText = (index: number) => {
+    const check = reversePairCheck(index);
+    if (!check) return "Link only the two curves in this pair.";
+    const available = Number(check.available_tangent_ft || 0).toFixed(2);
+    const minimum = Number(check.minimum_tangent_ft || 0).toFixed(2);
+    if (check.status !== "coordinated") {
+      return `Blocked · ${available} ft available / ${minimum} ft minimum · ${check.failure_reason || "Review Corridor QA."}`;
+    }
+    const left = check.lanes?.left;
+    const right = check.lanes?.right;
+    return `Standard rate · ${available} ft available / ${minimum} ft minimum · handoffs L ${Number(left?.handoff_station_ft || 0).toFixed(3)}, R ${Number(right?.handoff_station_ft || 0).toFixed(3)}`;
+  };
 
   return (
     <main className="app-shell">
@@ -806,10 +867,22 @@ export default function CalculatorApp() {
             <div><p className="eyebrow">Alignment source</p><strong>{landxml?.source?.filename || "No LandXML selected"}</strong></div>
             {allows(entitlement, CAPABILITIES.landxml) ? <label className="button accent">{landxml ? "Replace XML" : "Select LandXML"}<input type="file" accept=".xml,text/xml,application/xml" onChange={selectLandxml} /></label> : <button className="button accent" onClick={() => requestCapability(CAPABILITIES.landxml)}>Select LandXML {proChip(CAPABILITIES.landxml)}</button>}
             {landxml && <><p>{landxml.summary.alignment_name || "Unnamed alignment"} · {landxml.summary.linear_unit || "units undeclared"}</p><p>CRS: {landxml.summary.coordinate_system?.display_name || "Not declared in LandXML"}</p><p>{landxml.summary.curve_count} curves · {excludedCurveIndexes.length} excluded from QA · SHA {landxml.source.sha256.slice(0, 10)}…</p><button onClick={addAll} disabled={!inputs.speed}>Add all LandXML curves</button></>}
-            <label className="check reverse-curve-setting"><input type="checkbox" checked={Boolean(inputs.coordinate_reverse_curves)} onChange={(event) => changeReverseCurveCoordination(event.target.checked)} /><span><strong>Coordinate reverse curves {proChip(CAPABILITIES.multiCurve)}</strong><small>For consecutive opposite-direction MDOT curves, omit tangent runout between curves and preserve each curve&apos;s 30/70 runoff. Minimum tangent = 0.7Lr(exit) + 0.7Lr(entry).</small></span></label>
+            <p className="reverse-curve-guidance"><strong>Reverse-curve pairs {proChip(CAPABILITIES.multiCurve)}</strong> Link eligible adjacent curves below. Each curve can belong to one pair; standard rates and the 0.7Lr minimum are checked in Corridor QA.</p>
           </div>
           <div className="curve-list"><div className="list-title"><h3>Calculated curves</h3><span>{curves.length}</span></div>
-            {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <button key={index} className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>)}
+            {curves.length === 0 ? <p className="empty">Add a calculated curve to build a combined export set.</p> : curves.map((curve, index) => <div className="curve-list-item" key={index}>
+              <button className={selectedCurve === index ? "selected" : ""} onClick={() => loadCurve(index)}><strong>{curve.meta?.curve_name || `Curve ${index + 1}`}</strong><span>{curve.meta?.alignment_name} · {curve.meta?.curve_direction}</span></button>
+              {index < curves.length - 1 && <div className={`reverse-pair-link ${linkedGap(index) ? "linked" : ""}`}>
+                <button
+                  onClick={() => toggleReverseCurvePair(index)}
+                  disabled={!linkedGap(index) && gapConflict(index)}
+                  aria-pressed={linkedGap(index)}
+                >
+                  {linkedGap(index) ? `Unlink Curves ${index + 1}–${index + 2}` : `Link Curves ${index + 1}–${index + 2}`}
+                </button>
+                <small>{gapConflict(index) && !linkedGap(index) ? "Unavailable because one curve is already paired." : pairStatusText(index)}</small>
+              </div>}
+            </div>)}
           </div>
           <div className="button-grid"><button onClick={addCurve}>Add {proChip(CAPABILITIES.multiCurve)}</button><button onClick={updateCurve}>Update {proChip(CAPABILITIES.multiCurve)}</button><button onClick={removeCurve}>Remove</button></div>
         </aside>

@@ -52,7 +52,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertFalse(metadata["manual_overrides"]["superelevation_rate"])
         self.assertFalse(metadata["manual_overrides"]["normal_crown"])
 
-    def test_project_v4_records_release_metadata_and_round_trips(self):
+    def test_current_project_schema_records_release_metadata_and_round_trips(self):
         payload = {
             "version": super_project.PROJECT_VERSION,
             "application_version": APP_VERSION,
@@ -142,7 +142,7 @@ class PilotReadinessTests(unittest.TestCase):
         self.assertNotIn("STANTEC_PNG_B64", source)
 
     def test_windows_version_resource_uses_authoritative_version(self):
-        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 21, 0))
+        self.assertEqual(version_tuple(APP_VERSION), (1, 4, 22, 0))
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "version.txt"
             generate(path)
