@@ -213,10 +213,14 @@ def build_all_landxml_curves(content: str, filename: str, shared_inputs: dict[st
     return super_batch.build_curves_from_presets(data.curve_records(), normalized)
 
 
-def coordinate_reverse_curves(curves: list[dict], enabled: bool = True) -> list[dict]:
+def coordinate_reverse_curves(
+    curves: list[dict],
+    enabled: bool = True,
+    pairs: list[list[int]] | None = None,
+) -> list[dict]:
     if isinstance(enabled, str):
         enabled = enabled.strip().lower() in {"1", "true", "yes", "on"}
-    return super_batch.coordinate_reverse_curve_transitions(curves, enabled=bool(enabled))
+    return super_batch.coordinate_reverse_curve_transitions(curves, enabled=bool(enabled), pairs=pairs)
 
 
 def lookup(results: dict, direction: str, station_text: str = "", slope_text: str = "") -> dict[str, Any]:
@@ -362,8 +366,10 @@ def _calculation_warnings(curves: list[dict]) -> list[str]:
     return warnings
 
 
-def export_pdf(curves: list[dict]) -> dict[str, Any]:
-    content, warnings = _temporary_export(".pdf", lambda path: super_pdf.export_pdf(path, curves))
+def export_pdf(curves: list[dict], corridor_qa_report: dict | None = None) -> dict[str, Any]:
+    content, warnings = _temporary_export(
+        ".pdf", lambda path: super_pdf.export_pdf(path, curves, corridor_qa_report)
+    )
     return {"content": content, "warnings": list(dict.fromkeys(warnings + _calculation_warnings(curves)))}
 
 
@@ -410,7 +416,7 @@ def dispatch(operation: str, payload_json: str = "{}") -> Any:
             payload["content"], payload.get("filename", "alignment.xml"), payload.get("shared_inputs", {})
         ),
         "coordinate_reverse_curves": lambda: coordinate_reverse_curves(
-            payload.get("curves", []), payload.get("enabled", True)
+            payload.get("curves", []), payload.get("enabled", True), payload.get("pairs")
         ),
         "lookup": lambda: lookup(
             payload["results"], payload.get("direction", "left"), payload.get("station", ""), payload.get("slope", "")
@@ -430,7 +436,7 @@ def dispatch(operation: str, payload_json: str = "{}") -> Any:
         "project_load": lambda: project_load(payload["content"]),
         "project_save": lambda: project_save(payload["project"]),
         "export_ord_csv": lambda: export_ord_csv(payload["curves"]),
-        "export_pdf": lambda: export_pdf(payload["curves"]),
+        "export_pdf": lambda: export_pdf(payload["curves"], payload.get("corridor_qa")),
         "export_detail_dxf": lambda: export_detail_dxf(payload["curves"]),
         "export_overlay_dxf": lambda: export_overlay_dxf(
             payload["curves"], payload["landxml_source"]

@@ -63,7 +63,7 @@ Download the latest Windows executable or native macOS disk image from [GitHub R
 
 Requires Python 3.11 or newer.
 
-The current application release is **1.4.21** and the calculation-engine release is **1.2.1**. The engine centralizes each MDOT lane transition as one piecewise-linear profile used by diagrams, lookup, QA, and exports. The outside lane runs from zero cross slope to full super, while the inside lane holds normal crown until the SE-3A `X1 = Lr(NC/e)` breakpoint and then rotates linearly to full super. Optional reverse-curve coordination removes the intervening tangent runout and requires `Tmin = 0.7Lr(exit) + 0.7Lr(entry)`. Sufficient transitions meet once at 0% with no level segment; extra tangent extends both transitions proportionally and produces a QA review warning, while a short tangent blocks coordination. See [`docs/MDOT_TRANSITION_MODEL.md`](docs/MDOT_TRANSITION_MODEL.md). These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+The current application release is **1.4.22** and the calculation-engine release is **1.2.2**. The engine centralizes each MDOT lane transition as one piecewise-linear profile used by diagrams, lookup, QA, and exports. The outside lane runs from zero cross slope to full super, while the inside lane holds normal crown until the SE-3A `X1 = Lr(NC/e)` breakpoint and then rotates linearly to full super. Explicit reverse-curve pairs remove only the intervening tangent runout and require `Tmin = 0.7Lr(exit) + 0.7Lr(entry)`. Each lane retains the applicable standard `e/Lr` rate, joins continuously at an intersection when needed, or holds normal crown until the incoming transition begins. A short or invalid pair blocks coordination without changing the independent curve results. See [`docs/MDOT_TRANSITION_MODEL.md`](docs/MDOT_TRANSITION_MODEL.md). These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
 
 ```powershell
 git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
@@ -182,9 +182,9 @@ LandXML points are interpreted as Northing/Easting and written to CAD as X=Easti
 
 ## Project-file compatibility
 
-Projects use JSON schema version 4. The application migrates schema v1, v2, and v3 files in memory and preserves older calculation provenance as `legacy-unversioned` when needed. It refuses project files created by a newer schema rather than silently discarding unknown data. Desktop saves use a temporary file and atomic replacement to reduce corruption risk.
+Projects use JSON schema version 5. The application migrates schema v1 through v4 files in memory and preserves older calculation provenance as `legacy-unversioned` when needed. It refuses project files created by a newer schema rather than silently discarding unknown data. Desktop saves use a temporary file and atomic replacement to reduce corruption risk.
 
-Schema v4 can embed the selected LandXML text, original filename, and SHA-256 digest. This lets either application reopen the complete project without depending on a machine-specific XML path and detects accidental source corruption. Opening and resaving an older project upgrades its container to schema v4; it does not retroactively claim that old calculations were produced by the current engine.
+Schema v4 introduced embedded LandXML text, original filename, and SHA-256 integrity. Schema v5 adds explicit, adjacent, disjoint `reverse_curve_pairs`. Opening and resaving an older project upgrades its container to schema v5; it preserves recorded results and provenance and does not silently recalculate them with the current engine.
 
 ## Logging and troubleshooting
 

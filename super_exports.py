@@ -111,8 +111,9 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
         left_events, right_events = super_transition.build_mdot_lane_events(results, direction)
 
         def format_events(events: list[dict]) -> list[dict]:
-            return [
-                _make_row(
+            formatted: list[dict] = []
+            for event in events:
+                row = _make_row(
                     str(event["label"]),
                     float(event["station_ft"]),
                     float(event["slope_pct"]),
@@ -120,8 +121,11 @@ def build_lane_rows(results: dict, direction: str, station_format: bool = True) 
                     str(event["event_type"]),
                     station_format,
                 )
-                for event in events
-            ]
+                for key in ("reverse_pair_id", "reverse_pair_critical"):
+                    if key in event:
+                        row[key] = event[key]
+                formatted.append(row)
+            return formatted
 
         return format_events(left_events), format_events(right_events)
 
@@ -390,7 +394,8 @@ def _station_region(station: float, equations: list[dict] | None) -> int:
 
 def build_normalized_rows(curves: Iterable[dict], station_format: bool = True) -> list[dict]:
     rows: list[dict] = []
-    for curve in curves:
+    emitted_reverse_events: set[tuple[str, str, str, float, float]] = set()
+    for curve_index, curve in enumerate(curves):
         results = curve.get("results") or {}
         meta = curve.get("meta", {}) or {}
         direction = meta.get("curve_direction", "left")
@@ -402,12 +407,26 @@ def build_normalized_rows(curves: Iterable[dict], station_format: bool = True) -
                 station_ft = row.get("station_ft")
                 if station_ft is None:
                     continue
+                reverse_pair_id = str(row.get("reverse_pair_id") or "")
+                reverse_critical = bool(row.get("reverse_pair_critical") and reverse_pair_id)
+                if reverse_critical:
+                    reverse_key = (
+                        reverse_pair_id,
+                        side,
+                        str(row.get("event_type") or ""),
+                        round(float(station_ft), 7),
+                        round(float(row["slope_pct"]), 7),
+                    )
+                    if reverse_key in emitted_reverse_events:
+                        continue
+                    emitted_reverse_events.add(reverse_key)
                 rows.append(
                     {
                         "project_name": str(meta.get("project_name", "") or ""),
                         "route_name": str(meta.get("route_name", "") or ""),
                         "alignment_name": str(meta.get("alignment_name", "") or ""),
                         "curve_name": str(meta.get("curve_name", "") or ""),
+                        "curve_index": curve_index,
                         "curve_direction": str(direction or ""),
                         "station": station_ft,
                         "station_label": row["station"],
@@ -417,6 +436,8 @@ def build_normalized_rows(curves: Iterable[dict], station_format: bool = True) -
                         "slope_decimal": float(row["slope_decimal"]),
                         "slope_label": row["slope_label"],
                         "event_type": row["event_type"],
+                        "reverse_pair_id": reverse_pair_id or None,
+                        "reverse_pair_critical": reverse_critical,
                         "notes": row["note"] if not curve.get("notes") else f"{row['note']}; {curve['notes']}",
                         "station_region": _station_region(float(station_ft), results.get("station_equations")),
                     }

@@ -65,9 +65,11 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.match(source, /Review & export/i);
   assert.match(source, /Load synthetic sample/i);
   assert.match(source, /entitlement\.plan === "free".*Load synthetic sample/i);
-  assert.match(source, /Coordinate reverse curves/i);
-  assert.match(source, /omit tangent runout between curves/i);
-  assert.match(source, /Minimum tangent = 0\.7Lr\(exit\) \+ 0\.7Lr\(entry\)/i);
+  assert.match(source, /Reverse-curve pairs/i);
+  assert.match(source, /Link eligible adjacent curves below/i);
+  assert.match(source, /0\.7Lr minimum/i);
+  assert.match(source, /A curve can belong to only one reverse-curve pair/i);
+  assert.match(source, /reverse_curve_pairs: reverseCurvePairs/i);
   assert.match(source, /Local test plan/i);
   assert.match(await readFile(new URL("../app/entitlements.ts", import.meta.url), "utf8"), /process\.env\.NODE_ENV === "production"/);
   assert.match(source, /setLocalDevelopment\(hasLocalEntitlementOverride\(\)\)/);

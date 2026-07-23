@@ -140,7 +140,7 @@ def _shared_meta(curves: list[dict], key: str) -> str:
     return values.pop()
 
 
-def export_pdf(path: str, curves: Iterable[dict]) -> None:
+def export_pdf(path: str, curves: Iterable[dict], corridor_qa: dict | None = None) -> None:
     from reportlab.lib import colors
     from reportlab.lib.colors import HexColor
     from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
@@ -148,6 +148,7 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.pdfgen.canvas import Canvas
+    from reportlab.graphics.shapes import Drawing, Line, String
     from reportlab.platypus import (
         BaseDocTemplate,
         Flowable,
@@ -446,6 +447,186 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
         table.setStyle(TableStyle(commands))
         return table
 
+    def reverse_profile_drawing(check: dict) -> object:
+        drawing = Drawing(486, 178)
+        lane_data = check.get("lanes", {}) or {}
+        points_by_side: dict[str, list[tuple[float, float]]] = {}
+        for side in ("left", "right"):
+            lane = lane_data.get(side, {}) or {}
+            events = list(lane.get("profile_events", []) or [])
+            if not events:
+                events = list(lane.get("prior_events", []) or []) + list(lane.get("following_events", []) or [])
+            points_by_side[side] = sorted(
+                {
+                    (float(event["station_ft"]), float(event["slope_pct"]))
+                    for event in events
+                }
+            )
+        all_points = [point for points in points_by_side.values() for point in points]
+        if not all_points:
+            drawing.add(String(12, 84, "No coordinated lane events are available.", fontSize=8, fillColor=HexColor(MUTED)))
+            return drawing
+        station_start = min(point[0] for point in all_points)
+        station_end = max(point[0] for point in all_points)
+        slope_min = min(point[1] for point in all_points)
+        slope_max = max(point[1] for point in all_points)
+        if station_end <= station_start:
+            station_end = station_start + 1.0
+        if slope_max <= slope_min:
+            slope_max = slope_min + 1.0
+        left_margin, bottom, width, height = 38.0, 26.0, 430.0, 132.0
+
+        def xy(station: float, slope: float) -> tuple[float, float]:
+            return (
+                left_margin + (station - station_start) / (station_end - station_start) * width,
+                bottom + (slope - slope_min) / (slope_max - slope_min) * height,
+            )
+
+        drawing.add(Line(left_margin, bottom, left_margin + width, bottom, strokeColor=HexColor(MID_GRAY), strokeWidth=0.5))
+        if slope_min <= 0.0 <= slope_max:
+            _, zero_y = xy(station_start, 0.0)
+            drawing.add(Line(left_margin, zero_y, left_margin + width, zero_y, strokeColor=HexColor(MID_GRAY), strokeWidth=0.6))
+            drawing.add(String(4, zero_y - 3, "0%", fontSize=6.5, fillColor=HexColor(MUTED)))
+        for side, color in (("left", HexColor("#128A83")), ("right", HexColor("#D77A19"))):
+            points = points_by_side[side]
+            for start, end in zip(points, points[1:]):
+                x0, y0 = xy(*start)
+                x1, y1 = xy(*end)
+                drawing.add(Line(x0, y0, x1, y1, strokeColor=color, strokeWidth=1.8))
+            lane = lane_data.get(side, {}) or {}
+            for station in lane.get("zero_stations_ft", []) or []:
+                x, y = xy(float(station), 0.0)
+                drawing.add(Line(x, y - 4, x, y + 4, strokeColor=color, strokeWidth=1.0))
+            handoff = lane.get("handoff_station_ft")
+            if handoff is not None:
+                x, y = xy(float(handoff), float(lane.get("handoff_slope_pct", 0.0)))
+                drawing.add(Line(x, y - 6, x, y + 6, strokeColor=color, strokeWidth=1.2))
+                drawing.add(String(x + 2, y + 7, f"{side[0].upper()} handoff", fontSize=6, fillColor=color))
+        drawing.add(String(left_margin, 8, Super.format_station(station_start, True), fontSize=6.5, fillColor=HexColor(MUTED)))
+        drawing.add(String(left_margin + width - 44, 8, Super.format_station(station_end, True), fontSize=6.5, fillColor=HexColor(MUTED)))
+        drawing.add(String(left_margin + 142, 163, "Lane-specific standard-rate reverse transition", fontSize=8, fillColor=HexColor(INK)))
+        return drawing
+
+    pair_checks: dict[str, dict] = {}
+    for curve in curve_list:
+        coordination = ((curve.get("results") or {}).get("reverse_curve_coordination") or {})
+        for check in coordination.get("checks", []) or []:
+            pair_id = str(check.get("pair_id") or "")
+            if pair_id:
+                pair_checks.setdefault(pair_id, check)
+
+    for pair_id, check in sorted(
+        pair_checks.items(),
+        key=lambda item: tuple(item[1].get("paired_curve_indexes", [0, 0])),
+    ):
+        indexes = list(check.get("paired_curve_indexes", [0, 0]))
+        prior_index, following_index = int(indexes[0]), int(indexes[1])
+        prior_curve = curve_list[prior_index]
+        following_curve = curve_list[following_index]
+        prior_results = prior_curve.get("results", {}) or {}
+        following_results = following_curve.get("results", {}) or {}
+        prior_meta = prior_curve.get("meta", {}) or {}
+        following_meta = following_curve.get("meta", {}) or {}
+        prior_effective_slope = (
+            float(check.get("prior_rate_pct_per_ft", 0.0) or 0.0)
+            * float(prior_results.get("Lr", 0.0) or 0.0)
+            / 100.0
+        )
+        following_effective_slope = (
+            float(check.get("following_rate_pct_per_ft", 0.0) or 0.0)
+            * float(following_results.get("Lr", 0.0) or 0.0)
+            / 100.0
+        )
+        pair_rows = [
+            ("Pair", f"{_text(prior_meta.get('curve_name', f'Curve {prior_index + 1}'))} ({_text(prior_meta.get('curve_direction')).title()}) to {_text(following_meta.get('curve_name', f'Curve {following_index + 1}'))} ({_text(following_meta.get('curve_direction')).title()})"),
+            ("PT to PC", f"{_station(prior_results, prior_results.get('pt_ft'))} to {_station(following_results, following_results.get('pc_ft'))}"),
+            ("Available / minimum", f"{_number(check.get('available_tangent_ft'), 2, ' ft')} / {_number(check.get('minimum_tangent_ft'), 2, ' ft')}"),
+            ("Status", _text(check.get("status")).replace("_", " ")),
+            ("Rule", _text(check.get("rule"))),
+            ("Outgoing effective slope / Lr / rate", f"{_number(prior_effective_slope, 4)} / {_number(prior_results.get('Lr'), 2, ' ft')} / {_number(check.get('prior_rate_pct_per_ft'), 6, ' %/ft')}"),
+            ("Incoming effective slope / Lr / rate", f"{_number(following_effective_slope, 4)} / {_number(following_results.get('Lr'), 2, ' ft')} / {_number(check.get('following_rate_pct_per_ft'), 6, ' %/ft')}"),
+        ]
+        story.extend([
+            PageBreak(),
+            ContextMarker(f"Reverse curve pair {prior_index + 1}-{following_index + 1}"),
+            Paragraph(f"Reverse Curve Pair {prior_index + 1}-{following_index + 1}", styles["CurveTitle"]),
+            Paragraph("Lane-specific standard-rate transition record", styles["ReportSubtitle"]),
+            key_value_table(pair_rows, width_value=5.6 * inch),
+            Paragraph(
+                "Effective slope is the full lane-rotation magnitude used to establish the "
+                "standard rate. For reverse-crown cases, this may equal normal crown even "
+                "when the criteria-table superelevation value is zero.",
+                styles["Small"],
+            ),
+            Spacer(1, 0.12 * inch),
+            reverse_profile_drawing(check),
+            Spacer(1, 0.08 * inch),
+        ])
+        lane_summary: list[list[object]] = [[
+            Paragraph("LANE", styles["TableHeader"]),
+            Paragraph("HANDOFF", styles["TableHeader"]),
+            Paragraph("SLOPE", styles["TableHeaderRight"]),
+            Paragraph("OUTGOING USED", styles["TableHeaderRight"]),
+            Paragraph("INCOMING REMAINING", styles["TableHeaderRight"]),
+            Paragraph("CROWN HOLD", styles["TableHeader"]),
+            Paragraph("ZERO CROSSINGS", styles["TableHeader"]),
+        ]]
+        for side in ("left", "right"):
+            lane = (check.get("lanes", {}) or {}).get(side, {}) or {}
+            hold = lane.get("normal_crown_hold") or {}
+            zeros = ", ".join(
+                Super.format_station(float(value), True)
+                for value in lane.get("zero_stations_ft", []) or []
+            ) or "None"
+            hold_text = (
+                f"{Super.format_station(float(hold['start_ft']), True)} to "
+                f"{Super.format_station(float(hold['end_ft']), True)} ({float(hold['length_ft']):.2f} ft)"
+                if hold else "None"
+            )
+            lane_summary.append([
+                Paragraph(side.title(), styles["TableCell"]),
+                Paragraph(Super.format_station(float(lane.get("handoff_station_ft", 0.0)), True), styles["TableCell"]),
+                Paragraph(f"{float(lane.get('handoff_slope_pct', 0.0)):+.2f}%", styles["TableCellRight"]),
+                Paragraph(f"{float(lane.get('outgoing_rotation_length_ft', 0.0)):.2f} ft", styles["TableCellRight"]),
+                Paragraph(f"{float(lane.get('remaining_incoming_rotation_length_ft', 0.0)):.2f} ft", styles["TableCellRight"]),
+                Paragraph(hold_text, styles["TableCell"]),
+                Paragraph(zeros, styles["TableCell"]),
+            ])
+        pair_table = Table(
+            lane_summary,
+            colWidths=[0.42 * inch, 0.78 * inch, 0.52 * inch, 0.72 * inch, 0.88 * inch, 1.45 * inch, 1.25 * inch],
+            repeatRows=1,
+        )
+        pair_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor(CHARCOAL)),
+            ("TEXTCOLOR", (0, 0), (-1, 0), HexColor(WHITE)),
+            ("BOX", (0, 0), (-1, -1), 0.6, HexColor(MID_GRAY)),
+            ("INNERGRID", (0, 0), (-1, -1), 0.3, HexColor(MID_GRAY)),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.extend([Paragraph("Lane handoffs", styles["Section"]), pair_table])
+        related_findings = [
+            finding for finding in (corridor_qa or {}).get("findings", []) or []
+            if set(finding.get("curve_indexes", []) or []) == {prior_index, following_index}
+        ]
+        if related_findings:
+            story.extend([
+                Spacer(1, 0.08 * inch),
+                Paragraph("Corridor QA", styles["Section"]),
+                Paragraph(
+                    "<br/>".join(
+                        f"<b>{_text(finding.get('severity', 'review')).upper()} - {_text(finding.get('code'))}:</b> "
+                        f"{_text(finding.get('message'))} {_text(finding.get('details'))}"
+                        for finding in related_findings
+                    ),
+                    styles["Small"],
+                ),
+            ])
+
     for curve_index_number, curve in enumerate(curve_list, start=1):
         results = curve.get("results", {}) or {}
         inputs = results.get("inputs", {}) or {}
@@ -523,22 +704,39 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
             ]
         else:
             station_rows = []
-            if results.get("reverse_curve_entry_zero_ft") is not None:
+            coordination = results.get("reverse_curve_coordination", {}) or {}
+            if coordination.get("entry"):
                 station_rows.extend([
-                    ("Shared reverse-curve 0% meeting", _station(results, results.get("reverse_curve_entry_zero_ft"))),
                     ("Full super after PC (PC + 0.3Lr)", _station(results, results.get("full_super_ft"))),
                 ])
+                entry_lanes = coordination["entry"].get("lanes", {}) or {}
+                for side in ("left", "right"):
+                    events = entry_lanes.get(side, {}).get("events", []) or []
+                    handoff = next((event for event in events if event.get("event_type") == "Reverse handoff"), None)
+                    if handoff:
+                        station_rows.append((
+                            f"{side.title()}-lane reverse handoff",
+                            f"{_station(results, handoff.get('station_ft'))} at {float(handoff.get('slope_pct', 0.0)):+.2f}%",
+                        ))
             else:
                 station_rows.extend([
                     ("Point of normal crown", _station(results, results.get("pnc_ft"))),
                     ("Point of reverse crown", _station(results, results.get("reverse_crown_ft"))),
                     ("Full super near PC", _station(results, results.get("full_super_ft"))),
                 ])
-            if results.get("reverse_curve_exit_zero_ft") is not None:
+            if coordination.get("exit"):
                 station_rows.extend([
                     ("Full super before PT (PT - 0.3Lr)", _station(results, results.get("full_super_out_ft"))),
-                    ("Shared reverse-curve 0% meeting", _station(results, results.get("reverse_curve_exit_zero_ft"))),
                 ])
+                exit_lanes = coordination["exit"].get("lanes", {}) or {}
+                for side in ("left", "right"):
+                    events = exit_lanes.get(side, {}).get("events", []) or []
+                    handoff = next((event for event in events if event.get("event_type") == "Reverse handoff"), None)
+                    if handoff:
+                        station_rows.append((
+                            f"{side.title()}-lane reverse handoff",
+                            f"{_station(results, handoff.get('station_ft'))} at {float(handoff.get('slope_pct', 0.0)):+.2f}%",
+                        ))
             else:
                 station_rows.extend([
                     ("Full super near PT", _station(results, results.get("full_super_out_ft"))),
@@ -546,7 +744,6 @@ def export_pdf(path: str, curves: Iterable[dict]) -> None:
                     ("Normal crown out", _station(results, results.get("pnc_out_ft"))),
                 ])
 
-            coordination = results.get("reverse_curve_coordination", {}) or {}
             if coordination.get("checks"):
                 check = coordination["checks"][0]
                 station_rows.extend([

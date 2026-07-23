@@ -12,6 +12,49 @@ from super_lane import lane_profile_points, slope_at_station
 SEVERITY_RANK = {"pass": 0, "review": 1, "block": 2}
 
 
+def _within(value: float, start: float, end: float, tolerance: float = 1e-7) -> bool:
+    return min(start, end) - tolerance <= value <= max(start, end) + tolerance
+
+
+def _reverse_lane_issue(lane: dict, tangent_start: float, tangent_end: float) -> str | None:
+    try:
+        handoff = float(lane["handoff_station_ft"])
+        outgoing_rate = float(lane["outgoing_rate_pct_per_ft"])
+        incoming_rate = float(lane["incoming_rate_pct_per_ft"])
+    except (KeyError, TypeError, ValueError):
+        return "missing handoff or standard-rate metadata"
+    if not _within(handoff, tangent_start, tangent_end):
+        return "handoff is outside the intervening tangent"
+    if outgoing_rate <= 0.0 or incoming_rate <= 0.0:
+        return "recorded standard rate is not positive"
+
+    station_slopes: dict[float, set[float]] = {}
+    for event in lane.get("profile_events", []) or []:
+        try:
+            station = round(float(event["station_ft"]), 7)
+            slope = round(float(event["slope_pct"]), 7)
+        except (KeyError, TypeError, ValueError):
+            return "profile contains an invalid station or slope"
+        station_slopes.setdefault(station, set()).add(slope)
+    if len(station_slopes) < 2:
+        return "profile does not contain enough events to verify"
+    if any(len(slopes) != 1 for slopes in station_slopes.values()):
+        return "profile contains a slope discontinuity"
+
+    points = sorted((station, next(iter(slopes))) for station, slopes in station_slopes.items())
+    allowed_rates = (outgoing_rate, incoming_rate)
+    for start, end in zip(points, points[1:]):
+        distance = end[0] - start[0]
+        if distance <= 0.0:
+            return "profile stations are not strictly increasing"
+        actual_rate = abs(end[1] - start[1]) / distance
+        if actual_rate <= 1e-8:
+            continue
+        if not any(math.isclose(actual_rate, expected, rel_tol=1e-6, abs_tol=1e-7) for expected in allowed_rates):
+            return f"profile segment uses nonstandard rate {actual_rate:.8f} %/ft"
+    return None
+
+
 def _source_map(results: dict) -> dict[str, dict]:
     criteria = results.get("calculation_metadata", {}).get("criteria", {}) or {}
     return {
@@ -426,21 +469,57 @@ def analyze_corridor(data: super_landxml.LandXMLData, curves: list[dict], exclud
                 ),
             ))
             continue
-        if pair_check and pair_check.get("transition_rate_status") == "slower_than_standard":
+        if pair_check and pair_check.get("status") == "invalid_pair":
             findings.append(_finding(
-                "NONSTANDARD_REVERSE_TRANSITION_RATE",
-                "review",
-                f"Curves {prior_index + 1} and {next_index + 1} use a slower-than-standard reverse-curve transition rate.",
+                "INVALID_REVERSE_PAIR",
+                "block",
+                f"Curves {prior_index + 1} and {next_index + 1} are not eligible for reverse-curve coordination.",
                 [prior_index, next_index],
                 float(pair_check.get("tangent_start_ft", 0.0)),
                 float(pair_check.get("tangent_end_ft", 0.0)),
-                (
-                    f"Available tangent {float(pair_check.get('available_tangent_ft', 0.0)):.2f} ft exceeds the "
-                    f"standard minimum {float(pair_check.get('minimum_tangent_ft', 0.0)):.2f} ft. The transitions "
-                    f"remain linear and meet once at 0%; their lengths are "
-                    f"{float(pair_check.get('transition_length_factor', 1.0)):.3f} times the standard runoff lengths."
-                ),
+                str(pair_check.get("failure_reason") or "Review the linked curves and criteria profiles."),
             ))
+            continue
+        if pair_check and pair_check.get("status") == "invalid_handoff":
+            findings.append(_finding(
+                "INVALID_REVERSE_HANDOFF",
+                "block",
+                f"Curves {prior_index + 1} and {next_index + 1} do not produce a valid continuous standard-rate handoff.",
+                [prior_index, next_index],
+                float(pair_check.get("tangent_start_ft", 0.0)),
+                float(pair_check.get("tangent_end_ft", 0.0)),
+                str(pair_check.get("failure_reason") or "Review the lane transition geometry."),
+            ))
+            continue
+        if coordinated_pair:
+            lanes = pair_check.get("lanes", {}) or {}
+            tangent_start = float(pair_check.get("tangent_start_ft", 0.0))
+            tangent_end = float(pair_check.get("tangent_end_ft", 0.0))
+            invalid_lane = next(
+                (
+                    (side, "missing lane transition metadata")
+                    if side not in lanes
+                    else (side, issue)
+                    for side in ("left", "right")
+                    if side not in lanes
+                    or (issue := _reverse_lane_issue(lanes[side], tangent_start, tangent_end)) is not None
+                ),
+                None,
+            )
+            if pair_check.get("transition_rate_status") != "standard":
+                invalid_lane = ("pair", "transition rate is not recorded as standard")
+            if invalid_lane is not None:
+                invalid_side, invalid_reason = invalid_lane
+                findings.append(_finding(
+                    "NONSTANDARD_REVERSE_TRANSITION",
+                    "block",
+                    f"Curves {prior_index + 1} and {next_index + 1} contain invalid {invalid_side}-lane reverse-transition metadata.",
+                    [prior_index, next_index],
+                    tangent_start,
+                    tangent_end,
+                    f"{invalid_reason}. Recalculate the pair with the current calculation engine.",
+                ))
+            continue
         if prior_bounds and next_bounds and prior_bounds[1] > next_bounds[0] + 1e-6 and not coordinated_pair:
             findings.append(_finding(
                 "TRANSITION_OVERLAP", "review",

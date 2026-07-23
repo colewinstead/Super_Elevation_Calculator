@@ -117,13 +117,19 @@ class PdfReportTests(unittest.TestCase):
         following["results"] = Super.calculate_superelevation(
             "143+00", "163+00", "45", "1200", "centerline", "rural", "12", "2", "", "", "", "0.02", "", ""
         )
-        curves = super_batch.coordinate_reverse_curve_transitions([prior, following])
+        curves = super_batch.coordinate_reverse_curve_transitions([prior, following], pairs=[[0, 1]])
 
         content = self.export(curves)
-        self.assertIn(b"Shared reverse-curve 0%", content)
-        self.assertIn(b"meeting", content)
-        self.assertIn(b"slower than standard", content)
-        self.assertIn(b"Minimum reverse-curve", content)
+        self.assertEqual(self.page_count(content), 6)
+        self.assertIn(b"Reverse Curve Pair 1-2", content)
+        self.assertIn(b"Lane-specific standard-rate transition record", content)
+        self.assertIn(b"Lane handoffs", content)
+        self.assertIn(b"ZERO CROSSINGS", content)
+        self.assertIn(b"HANDOFF", content)
+        self.assertIn(b"NC HOLD", content)
+        self.assertIn(b"START", content)
+        self.assertIn(b"END", content)
+        self.assertNotIn(b"slower than standard", content)
         self.assertIn(b"Tmin = 0.7Lr", content)
 
     def test_normal_crown_manual_override_and_long_notes_are_reported(self):

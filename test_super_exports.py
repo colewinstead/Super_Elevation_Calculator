@@ -18,6 +18,7 @@ import super_service
 
 
 LANDXML_FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "sr82_synthetic.xml"
+CW_REVERSE_FIXTURE = Path(__file__).parent / "tests" / "fixtures" / "cw_reverse_curve.xml"
 
 
 def _synthetic_landxml_data(
@@ -277,7 +278,7 @@ class SuperExportTests(unittest.TestCase):
                 "12", "2", "0.026", "", "", "0.02", "73", "56",
             ),
         }
-        coordinated = super_batch.coordinate_reverse_curve_transitions([first, second])
+        coordinated = super_batch.coordinate_reverse_curve_transitions([first, second], pairs=[[0, 1]])
         left_rows, _ = build_lane_rows(coordinated[0]["results"], "left", station_format=False)
         entry_nc = next(row for row in left_rows if row["event_type"] == "Normal crown")
         pc = next(row for row in left_rows if row["label"] == "PC")
@@ -629,6 +630,90 @@ class SuperExportTests(unittest.TestCase):
         labels = [entity.get("1", "") for entity in entities if entity["type"] == "TEXT"]
         self.assertIn("PC 120+00.000", labels)
         self.assertIn("PT 140+00.000", labels)
+
+    def test_overlay_dxf_places_every_reverse_pair_event_on_dedicated_layer(self):
+        content = CW_REVERSE_FIXTURE.read_text(encoding="utf-8")
+        landxml = super_landxml.parse_landxml_text(content, CW_REVERSE_FIXTURE.name)
+        independent = super_service.build_all_landxml_curves(
+            content,
+            CW_REVERSE_FIXTURE.name,
+            {
+                "speed": "65", "facility": "centerline", "area": "rural",
+                "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
+            },
+        )
+        curves = super_batch.coordinate_reverse_curve_transitions(independent, pairs=[[0, 1]])
+        critical_rows = [
+            row for row in super_exports.build_normalized_rows(curves)
+            if row.get("reverse_pair_critical")
+        ]
+        self.assertTrue(critical_rows)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "reverse_pair.dxf"
+            super_dxf.export_overlay_dxf(path, curves, landxml)
+            entities = _parse_dxf_entities(path.read_text(encoding="utf-8"))
+
+        reverse_entities = [
+            entity for entity in entities
+            if entity.get("8") == "ALI_DESIGN_ML_SE_REVERSE"
+        ]
+        self.assertTrue(reverse_entities)
+        reverse_text = [
+            entity.get("1", "")
+            for entity in reverse_entities
+            if entity["type"] == "TEXT"
+        ]
+        expected_callouts = {
+            f"{row['side'].upper()} {row['event_type']} "
+            f"{super_dxf._overlay_station_label(row, curves[int(row['curve_index'])])}"
+            for row in critical_rows
+        }
+        self.assertTrue(expected_callouts.issubset(set(reverse_text)))
+        for row in critical_rows:
+            self.assertIn(row["slope_label"], reverse_text)
+
+        callout_entities = [
+            entity for entity in reverse_entities
+            if entity["type"] == "TEXT" and entity.get("1", "") in expected_callouts
+        ]
+        positions = {(entity.get("10"), entity.get("20")) for entity in callout_entities}
+        self.assertEqual(len(positions), len(callout_entities))
+
+    def test_ord_rows_include_canonical_reverse_handoffs_zeros_and_crown_holds(self):
+        content = CW_REVERSE_FIXTURE.read_text(encoding="utf-8")
+        independent = super_service.build_all_landxml_curves(
+            content,
+            CW_REVERSE_FIXTURE.name,
+            {
+                "speed": "65", "facility": "centerline", "area": "rural",
+                "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
+            },
+        )
+        curves = super_batch.coordinate_reverse_curve_transitions(independent, pairs=[[0, 1]])
+        rows = super_exports.build_normalized_rows(curves)
+        reverse_rows = [row for row in rows if row.get("reverse_pair_critical")]
+        event_types = {row["event_type"] for row in reverse_rows}
+        self.assertIn("Reverse handoff", event_types)
+        self.assertIn("Reverse curve zero", event_types)
+        self.assertIn("Normal crown hold start", event_types)
+        self.assertIn("Normal crown hold end", event_types)
+        self.assertIn("End full super", event_types)
+        self.assertIn("PT reverse-curve runoff", event_types)
+        self.assertIn("PC reverse-curve runoff", event_types)
+        self.assertIn("Full super", event_types)
+        self.assertTrue(all(row["reverse_pair_id"] == "reverse-pair-0-1" for row in reverse_rows))
+        canonical_keys = {
+            (
+                row["reverse_pair_id"],
+                row["side"],
+                row["event_type"],
+                round(float(row["station"]), 7),
+                round(float(row["slope_percent"]), 7),
+            )
+            for row in reverse_rows
+        }
+        self.assertEqual(len(canonical_keys), len(reverse_rows))
 
     def test_overlay_dxf_rotates_callout_text_perpendicular_to_alignment(self):
         landxml = super_landxml.load_landxml(LANDXML_FIXTURE)

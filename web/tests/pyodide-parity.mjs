@@ -103,6 +103,7 @@ assert.deepEqual(corridorDiagram.curves.map((curve) => curve.curve_name), ["Curv
 const reverseCurvePayload = {
   entitlement: proEntitlement,
   enabled: true,
+  pairs: [[0, 1]],
   curves: [
     { results: structuredClone(calculation.results), meta: { curve_name: "Curve A", curve_direction: "right" } },
     { results: structuredClone(calculation.results), meta: { curve_name: "Curve B", curve_direction: "left" } },
@@ -115,12 +116,13 @@ pyodide.globals.set("reverse_curve_payload", JSON.stringify(reverseCurvePayload)
 const reverseCurveProxy = pyodide.runPython(`super_service.dispatch("coordinate_reverse_curves", reverse_curve_payload)`);
 const reverseCurves = reverseCurveProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 reverseCurveProxy.destroy();
-assert.ok(Math.abs(reverseCurves[0].results.reverse_curve_exit_zero_ft - 1350) < 1e-9);
-assert.ok(Math.abs(reverseCurves[1].results.reverse_curve_entry_zero_ft - 1350) < 1e-9);
 assert.equal(reverseCurves[0].results.full_super_out_ft, calculation.results.full_super_out_ft);
 assert.equal(reverseCurves[1].results.full_super_ft, 1553.4);
 assert.equal(reverseCurves[0].results.reverse_curve_coordination.checks[0].status, "coordinated");
-assert.equal(reverseCurves[0].results.reverse_curve_coordination.checks[0].transition_rate_status, "slower_than_standard");
+assert.equal(reverseCurves[0].results.reverse_curve_coordination.checks[0].transition_rate_status, "standard");
+assert.ok(["normal_crown_hold", "standard_rate_intersection"].includes(
+  reverseCurves[0].results.reverse_curve_coordination.checks[0].lanes.left.mode,
+));
 
 pyodide.globals.set("free_reverse_curve_payload", JSON.stringify({ ...reverseCurvePayload, entitlement: freeEntitlement }));
 const freeReverseCurveProxy = pyodide.runPython(`super_service.dispatch_safe("coordinate_reverse_curves", free_reverse_curve_payload)`);
@@ -213,23 +215,31 @@ pyodide.globals.set("cw_payload", JSON.stringify({
   filename: "cw_reverse_curve.xml",
   shared_inputs: {
     speed: "65", facility: "centerline", area: "rural", lane_width: "12",
-    lanes_rotated: "2", normal_crown: "0.02", coordinate_reverse_curves: "true",
+    lanes_rotated: "2", normal_crown: "0.02",
   },
 }));
 const cwProxy = pyodide.runPython(`super_service.dispatch("build_all_landxml_curves", cw_payload)`);
 const cwCurves = cwProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 cwProxy.destroy();
 assert.equal(cwCurves.length, 2);
-const cwCheck = cwCurves[0].results.reverse_curve_coordination.checks[0];
+pyodide.globals.set("cw_coordinate_payload", JSON.stringify({
+  entitlement: proEntitlement,
+  enabled: true,
+  pairs: [[0, 1]],
+  curves: cwCurves,
+}));
+const cwCoordinateProxy = pyodide.runPython(`super_service.dispatch("coordinate_reverse_curves", cw_coordinate_payload)`);
+const coordinatedCwCurves = cwCoordinateProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+cwCoordinateProxy.destroy();
+const cwCheck = coordinatedCwCurves[0].results.reverse_curve_coordination.checks[0];
 assert.equal(cwCheck.status, "coordinated");
 assert.ok(Math.abs(cwCheck.available_tangent_ft - 123) < 1e-6);
 assert.ok(Math.abs(cwCheck.minimum_tangent_ft - 86.1) < 1e-6);
-assert.equal(cwCheck.transition_rate_status, "slower_than_standard");
-assert.ok(Math.abs(cwCheck.transition_length_factor - 1.3) < 1e-6);
-assert.ok(Math.abs(
-  cwCurves[1].results.reverse_curve_entry_zero_ft
-  - cwCurves[0].results.reverse_curve_exit_zero_ft,
-) < 1e-6);
+assert.equal(cwCheck.transition_rate_status, "standard");
+assert.equal(cwCheck.lanes.left.mode, "normal_crown_hold");
+assert.equal(cwCheck.lanes.right.mode, "normal_crown_hold");
+assert.ok(cwCheck.lanes.left.normal_crown_hold.length_ft > 0);
+assert.ok(cwCheck.lanes.right.normal_crown_hold.length_ft > 0);
 
 pyodide.globals.set("plan_payload", JSON.stringify({ entitlement: proEntitlement, content: corridorContent, filename: "qa-test.xml", curves: batchCurves }));
 const planProxy = pyodide.runPython(`super_service.dispatch("plan_view", plan_payload)`);

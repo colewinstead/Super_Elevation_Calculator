@@ -1873,6 +1873,23 @@ def format_results(results: dict, station_format: bool) -> list[str]:
         lines.append(f"Reverse-curve rule: {check.get('rule', 'Tmin = 0.7Lr(exit) + 0.7Lr(entry)')}")
         if check.get("transition_rate_status"):
             lines.append(f"Reverse-curve transition rate: {str(check['transition_rate_status']).replace('_', ' ')}")
+        for side in ("left", "right"):
+            lane = (check.get("lanes", {}) or {}).get(side, {}) or {}
+            if lane.get("handoff_station_ft") is None:
+                continue
+            lines.append(
+                f"{side.title()}-lane reverse handoff: "
+                f"{format_result_station(results, lane['handoff_station_ft'], station_format)} "
+                f"at {float(lane.get('handoff_slope_pct', 0.0)):+.2f}%"
+            )
+            hold = lane.get("normal_crown_hold") or {}
+            if hold:
+                lines.append(
+                    f"{side.title()}-lane normal-crown hold: "
+                    f"{format_result_station(results, hold['start_ft'], station_format)} to "
+                    f"{format_result_station(results, hold['end_ft'], station_format)} "
+                    f"({float(hold.get('length_ft', 0.0)):.2f} ft)"
+                )
     return lines
 
 def main():

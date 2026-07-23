@@ -2,7 +2,7 @@
 
 ## Scope and source record
 
-This document records how calculation engine `1.2.1` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
+This document records how calculation engine `1.2.2` turns the MDOT criteria values already calculated by `Super.py` into lane-by-lane, piecewise-linear transition profiles. It does not change the MDOT rate tables, relative-gradient tables, friction logic, station equations, coordinate transforms, or LandXML geometry.
 
 The implementation was checked against these official MDOT sources:
 
@@ -34,17 +34,22 @@ The standard manual requires enough tangent length for the transition between re
 
 `Tmin = 0.7Lr(exit) + 0.7Lr(entry)`
 
-When two consecutive MDOT circular curves turn in opposite directions and reverse-curve coordination is selected:
+Users explicitly link disjoint pairs of adjacent calculated curves. Each pair must contain two opposite-direction MDOT circular curves, and a curve cannot belong to two pairs. Pairing does not change either curve's `Lr`, full-super stations, 30%/70% placement, or signed standard rate `e/Lr`.
 
-- Tangent runout is omitted only between the two coordinated curves.
-- At exactly `Tmin`, each curve retains its standard runoff length and normal 30%/70% placement at PT or PC.
-- When the tangent is at least `Tmin`, the two runoff transitions are extended proportionally to meet at one shared 0% station. There is no level 0% segment.
-- The shared station divides the tangent in proportion to `0.7Lr(exit)` and `0.7Lr(entry)`. It is the tangent midpoint when the two runoff lengths are equal.
-- If the tangent is longer than `Tmin`, Corridor QA emits a review warning because the resulting transition rate is slower than the standard rate.
-- If the tangent is shorter than `Tmin`, coordination is not applied. Corridor QA emits a blocking `SHORT_REVERSE_TANGENT` finding; the engine does not shorten or move either runoff to conceal the deficiency.
-- Criteria profile, direction, or eligibility failures never cause a silent substitution or altered calculation.
+For each lane independently:
 
-For the sanitized `tests/fixtures/cw_reverse_curve.xml` regression at 65 mph, the tangent is 123.0 ft and `Tmin` is 86.1 ft. The two extended linear transitions meet at one 0% station and Corridor QA flags the slower-than-standard transition rate for review.
+- Tangent runout is omitted only between the two linked curves.
+- The outgoing line continues from its recorded full-super point at the outgoing curve's signed standard rate.
+- The incoming line is extended backward from its recorded full-super point at the incoming curve's signed standard rate.
+- If both lines occupy the same zero-to-normal-crown interval, they join at their station/slope intersection. The slope remains continuous, although unequal curve rates may produce a rate change at the handoff.
+- If the outgoing lane reaches normal crown first, it holds normal crown until the incoming standard-rate line begins.
+- At exactly `Tmin`, both lanes retain one shared 0% meeting station.
+- A longer tangent does not stretch either transition or slow its rate.
+- Every non-flat segment is linear and uses one of the two recorded standard rates.
+
+If the tangent is shorter than `Tmin`, the pair is invalid, or a continuous in-tangent standard-rate handoff cannot be constructed, coordination is not applied. Corridor QA emits a blocking finding and leaves both independent curve calculations intact. Criteria profile, direction, eligibility, or entitlement failures never cause a silent substitution or altered calculation.
+
+For the sanitized `tests/fixtures/cw_reverse_curve.xml` regression at 65 mph, the tangent is 123.0 ft and `Tmin` is 86.1 ft. Both lanes retain the calculated standard rate and include a lane-specific normal-crown hold before the incoming transition begins.
 
 ## Change control
 
