@@ -8,6 +8,7 @@ from unittest import mock
 import super_service
 import super_batch
 import super_exports
+import super_qa
 import super_transition
 
 
@@ -32,6 +33,53 @@ class CorridorQATests(unittest.TestCase):
                 "lanes_rotated": "2",
                 "normal_crown": "0.02",
             },
+        )
+
+    def reverse_preset_pair(
+        self,
+        *,
+        speed: int,
+        outgoing_radius: float,
+        incoming_radius: float,
+        tangent_extra_ft: float,
+    ) -> list[dict]:
+        common = {
+            "speed": str(speed),
+            "facility": "centerline",
+            "area": "rural",
+            "lane_width": "12",
+            "lanes_rotated": "2",
+            "normal_crown": "0.02",
+        }
+
+        def build(incoming_pc: float) -> list[dict]:
+            return super_batch.build_curves_from_presets(
+                [
+                    {
+                        "pc_station_label": "1000",
+                        "pt_station_label": "2000",
+                        "radius_ft": outgoing_radius,
+                        "curve_direction": "left",
+                        "curve_name": "Outgoing",
+                        "alignment_name": "ML",
+                    },
+                    {
+                        "pc_station_label": str(incoming_pc),
+                        "pt_station_label": str(incoming_pc + 1000.0),
+                        "radius_ft": incoming_radius,
+                        "curve_direction": "right",
+                        "curve_name": "Incoming",
+                        "alignment_name": "ML",
+                    },
+                ],
+                common,
+            )
+
+        provisional = build(2100.0)
+        minimum = 0.7 * provisional[0]["results"]["Lr"] + 0.7 * provisional[1]["results"]["Lr"]
+        return super_batch.coordinate_reverse_curve_transitions(
+            build(2000.0 + minimum + tangent_extra_ft),
+            pairs=[[0, 1]],
         )
 
     def test_curve_diagram_contains_profiles_markers_and_criteria(self):
@@ -216,7 +264,12 @@ class CorridorQATests(unittest.TestCase):
             lane = check["lanes"][side]
             self.assertEqual(lane["mode"], "normal_crown_hold")
             self.assertGreater(lane["normal_crown_hold"]["length_ft"], 0.0)
-            self.assertAlmostEqual(lane["handoff_slope_pct"], -2.0)
+            self.assertIsNone(lane["handoff_station_ft"])
+            self.assertIsNone(lane["handoff_slope_pct"])
+            self.assertNotIn(
+                "Reverse handoff",
+                {event["event_type"] for event in lane["profile_events"]},
+            )
             self.assertGreaterEqual(len(lane["zero_stations_ft"]), 1)
 
         report = super_service.corridor_qa(content, CW_FIXTURE.name, curves)
@@ -266,17 +319,23 @@ class CorridorQATests(unittest.TestCase):
         self.assertAlmostEqual(check["available_tangent_ft"], 90.0, places=6)
         self.assertAlmostEqual(check["minimum_tangent_ft"], 85.4, places=6)
         self.assertEqual(check["transition_rate_status"], "standard")
-        self.assertLess(
-            check["lanes"]["left"]["handoff_station_ft"],
-            curves[0]["results"]["pt_ft"],
-        )
-        self.assertGreater(
-            check["lanes"]["right"]["handoff_station_ft"],
-            curves[1]["results"]["pc_ft"],
-        )
 
         for side in ("left", "right"):
             lane = check["lanes"][side]
+            self.assertEqual(lane["mode"], "normal_crown_hold")
+            self.assertIsNone(lane["handoff_station_ft"])
+            self.assertIsNone(lane["handoff_slope_pct"])
+            self.assertNotIn(
+                "Reverse handoff",
+                {event["event_type"] for event in lane["profile_events"]},
+            )
+            self.assertIsNone(
+                super_qa._reverse_lane_issue(
+                    lane,
+                    curves[0]["results"]["pt_ft"],
+                    curves[1]["results"]["pc_ft"],
+                )
+            )
             points = sorted({
                 (float(event["station_ft"]), float(event["slope_pct"]))
                 for event in lane["profile_events"]
@@ -293,6 +352,154 @@ class CorridorQATests(unittest.TestCase):
                     segment_rate <= 1e-9 or round(segment_rate, 10) in allowed_rates,
                     (side, start, end, segment_rate, allowed_rates),
                 )
+
+        self.assertLess(
+            check["lanes"]["left"]["normal_crown_hold"]["end_ft"],
+            curves[0]["results"]["pt_ft"],
+        )
+        self.assertGreater(
+            check["lanes"]["right"]["normal_crown_hold"]["start_ft"],
+            curves[1]["results"]["pc_ft"],
+        )
+
+        corridor = super_service.corridor_diagram(curves)
+        prior_diagram, following_diagram = corridor["curves"]
+        for side in ("left", "right"):
+            split = float(check["lanes"][side]["normal_crown_hold"]["end_ft"])
+            prior_profile = prior_diagram["profiles"][side]
+            following_profile = following_diagram["profiles"][side]
+            self.assertAlmostEqual(prior_profile[-1]["station_ft"], split, places=7)
+            self.assertAlmostEqual(following_profile[0]["station_ft"], split, places=7)
+            self.assertAlmostEqual(
+                prior_profile[-1]["slope_pct"],
+                following_profile[0]["slope_pct"],
+                places=9,
+            )
+            self.assertLessEqual(
+                prior_profile[-1]["station_ft"],
+                following_profile[0]["station_ft"],
+            )
+
+        for curve in curves:
+            lookup = super_service.diagram_lookup(
+                curve["results"],
+                curve["meta"]["curve_direction"],
+                150405.0,
+            )
+            self.assertAlmostEqual(lookup["lanes"]["right"]["slope_pct"], -2.0, places=9)
+            self.assertEqual(lookup["lanes"]["right"]["phase"], "Normal crown hold")
+
+    def test_minimum_plus_point_one_allows_standard_rate_handoff_after_pc(self):
+        curves = self.reverse_preset_pair(
+            speed=55,
+            outgoing_radius=3000.0,
+            incoming_radius=6000.0,
+            tangent_extra_ft=0.1,
+        )
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        self.assertEqual(check["status"], "coordinated")
+        self.assertAlmostEqual(
+            check["available_tangent_ft"] - check["minimum_tangent_ft"],
+            0.1,
+            places=7,
+        )
+
+        intersection_lane = next(
+            lane for lane in check["lanes"].values()
+            if lane["mode"] == "standard_rate_intersection"
+        )
+        self.assertGreater(
+            intersection_lane["handoff_station_ft"],
+            curves[1]["results"]["pc_ft"],
+        )
+        self.assertLess(
+            intersection_lane["handoff_station_ft"],
+            curves[1]["results"]["full_super_ft"],
+        )
+        self.assertEqual(
+            sum(
+                event["event_type"] == "Reverse handoff"
+                for event in intersection_lane["profile_events"]
+            ),
+            2,
+        )
+        self.assertIsNone(
+            super_qa._reverse_lane_issue(
+                intersection_lane,
+                curves[0]["results"]["pt_ft"],
+                curves[1]["results"]["pc_ft"],
+            )
+        )
+        side = next(
+            side
+            for side, lane in check["lanes"].items()
+            if lane is intersection_lane
+        )
+        corridor = super_service.corridor_diagram(curves)
+        prior_profile = corridor["curves"][0]["profiles"][side]
+        following_profile = corridor["curves"][1]["profiles"][side]
+        self.assertAlmostEqual(
+            prior_profile[-1]["station_ft"],
+            intersection_lane["handoff_station_ft"],
+            places=7,
+        )
+        self.assertAlmostEqual(
+            following_profile[0]["station_ft"],
+            intersection_lane["handoff_station_ft"],
+            places=7,
+        )
+        self.assertAlmostEqual(
+            prior_profile[-1]["slope_pct"],
+            following_profile[0]["slope_pct"],
+            places=9,
+        )
+
+    def test_full_precision_rate_validation_does_not_false_block_short_segments(self):
+        curves = self.reverse_preset_pair(
+            speed=25,
+            outgoing_radius=800.0,
+            incoming_radius=1500.0,
+            tangent_extra_ft=5.0,
+        )
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        self.assertEqual(check["status"], "coordinated")
+        for lane in check["lanes"].values():
+            self.assertIsNone(
+                super_qa._reverse_lane_issue(
+                    lane,
+                    curves[0]["results"]["pt_ft"],
+                    curves[1]["results"]["pc_ft"],
+                )
+            )
+
+    def test_minimum_plus_point_one_allows_mirrored_handoff_before_pt(self):
+        curves = self.reverse_preset_pair(
+            speed=55,
+            outgoing_radius=6000.0,
+            incoming_radius=3000.0,
+            tangent_extra_ft=0.1,
+        )
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        self.assertEqual(check["status"], "coordinated")
+        intersection_lane = next(
+            lane for lane in check["lanes"].values()
+            if lane["mode"] == "standard_rate_intersection"
+        )
+        self.assertGreater(
+            intersection_lane["handoff_station_ft"],
+            curves[0]["results"]["full_super_out_ft"],
+        )
+        self.assertLess(
+            intersection_lane["handoff_station_ft"],
+            curves[0]["results"]["pt_ft"],
+        )
+        self.assertIsNone(
+            super_qa._reverse_lane_issue(
+                intersection_lane,
+                curves[0]["results"]["pt_ft"],
+                curves[1]["results"]["pc_ft"],
+            )
+        )
 
     def test_exact_minimum_reverse_tangent_keeps_standard_rate(self):
         curves = self.curves()
@@ -427,6 +634,31 @@ class CorridorQATests(unittest.TestCase):
         finding = next(item for item in report["findings"] if item["code"] == "SHORT_REVERSE_TANGENT")
         self.assertEqual(finding["severity"], "block")
         self.assertIn("0.7Lr(exit) + 0.7Lr(entry)", finding["details"])
+
+    def test_zero_percent_curve_is_rejected_as_an_ineligible_pair(self):
+        curves = super_batch.build_curves_from_presets(
+            [
+                {
+                    "pc_station_label": "1000", "pt_station_label": "2000",
+                    "radius_ft": 1500.0, "curve_direction": "left",
+                    "curve_name": "Zero percent", "alignment_name": "ML",
+                },
+                {
+                    "pc_station_label": "2200", "pt_station_label": "3200",
+                    "radius_ft": 1200.0, "curve_direction": "right",
+                    "curve_name": "Incoming", "alignment_name": "ML",
+                },
+            ],
+            {
+                "speed": "20", "facility": "centerline", "area": "rural",
+                "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
+            },
+        )
+        self.assertEqual(curves[0]["results"]["e"], 0.0)
+        coordinated = super_batch.coordinate_reverse_curve_transitions(curves, pairs=[[0, 1]])
+        check = coordinated[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        self.assertEqual(check["status"], "invalid_pair")
+        self.assertIn("0% superelevation curve", check["failure_reason"])
 
     def test_corridor_qa_blocks_nonstandard_or_discontinuous_pair_metadata(self):
         curves = super_batch.coordinate_reverse_curve_transitions(self.curves(), pairs=[[0, 1]])

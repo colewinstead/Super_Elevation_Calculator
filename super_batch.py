@@ -69,6 +69,17 @@ def _pair_ineligibility(prior: dict, following: dict) -> str | None:
         return "Both linked curves must have a PT/PC tangent boundary."
     if float(prior_results.get("Lr", 0.0) or 0.0) <= 0.0 or float(following_results.get("Lr", 0.0) or 0.0) <= 0.0:
         return "Both linked curves must have positive runoff lengths."
+
+    def effective_transition_magnitude(results: dict) -> float:
+        if str(results.get("crown_state", "")).lower().startswith("reverse"):
+            return abs(float(results.get("inputs", {}).get("normal_crown", 0.02) or 0.02))
+        return abs(float(results.get("e", 0.0) or 0.0))
+
+    if effective_transition_magnitude(prior_results) <= 0.0 or effective_transition_magnitude(following_results) <= 0.0:
+        return (
+            "Both linked curves must require a positive cross-slope transition; "
+            "a 0% superelevation curve does not need reverse-curve coordination."
+        )
     return None
 
 

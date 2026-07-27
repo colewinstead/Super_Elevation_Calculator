@@ -33,6 +33,13 @@ function interpolate(points: Dict[], station: number) {
   return prior.slope_pct + fraction * (next.slope_pct - prior.slope_pct);
 }
 
+function profileValue(points: Dict[], station: number) {
+  if (!points.length) return null;
+  const start = Number(points[0].station_ft);
+  const end = Number(points[points.length - 1].station_ft);
+  return station >= start && station <= end ? interpolate(points, station) : null;
+}
+
 function chartRows(corridor: Dict | null, visibleDomain: [number, number]) {
   const diagrams = corridor?.curves || [];
   if (!diagrams.length) return [];
@@ -48,9 +55,8 @@ function chartRows(corridor: Dict | null, visibleDomain: [number, number]) {
     const row: Dict = { station };
     diagrams.forEach((diagram: Dict) => {
       const key = `curve${diagram.curve_index}`;
-      const inside = station >= Number(diagram.domain.start_ft) && station <= Number(diagram.domain.end_ft);
-      row[`${key}Left`] = inside ? interpolate(diagram.profiles.left, station) : null;
-      row[`${key}Right`] = inside ? interpolate(diagram.profiles.right, station) : null;
+      row[`${key}Left`] = profileValue(diagram.profiles.left, station);
+      row[`${key}Right`] = profileValue(diagram.profiles.right, station);
     });
     return row;
   });

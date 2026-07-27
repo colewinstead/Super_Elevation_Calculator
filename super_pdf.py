@@ -498,8 +498,8 @@ def export_pdf(path: str, curves: Iterable[dict], corridor_qa: dict | None = Non
                 x, y = xy(float(station), 0.0)
                 drawing.add(Line(x, y - 4, x, y + 4, strokeColor=color, strokeWidth=1.0))
             handoff = lane.get("handoff_station_ft")
-            if handoff is not None:
-                x, y = xy(float(handoff), float(lane.get("handoff_slope_pct", 0.0)))
+            if handoff is not None and not lane.get("normal_crown_hold"):
+                x, y = xy(float(handoff), float(lane.get("handoff_slope_pct") or 0.0))
                 drawing.add(Line(x, y - 6, x, y + 6, strokeColor=color, strokeWidth=1.2))
                 drawing.add(String(x + 2, y + 7, f"{side[0].upper()} handoff", fontSize=6, fillColor=color))
         drawing.add(String(left_margin, 8, Super.format_station(station_start, True), fontSize=6.5, fillColor=HexColor(MUTED)))
@@ -564,7 +564,7 @@ def export_pdf(path: str, curves: Iterable[dict], corridor_qa: dict | None = Non
         ])
         lane_summary: list[list[object]] = [[
             Paragraph("LANE", styles["TableHeader"]),
-            Paragraph("HANDOFF", styles["TableHeader"]),
+            Paragraph("CONTROL", styles["TableHeader"]),
             Paragraph("SLOPE", styles["TableHeaderRight"]),
             Paragraph("OUTGOING USED", styles["TableHeaderRight"]),
             Paragraph("INCOMING REMAINING", styles["TableHeaderRight"]),
@@ -583,10 +583,20 @@ def export_pdf(path: str, curves: Iterable[dict], corridor_qa: dict | None = Non
                 f"{Super.format_station(float(hold['end_ft']), True)} ({float(hold['length_ft']):.2f} ft)"
                 if hold else "None"
             )
+            handoff = lane.get("handoff_station_ft")
+            if hold:
+                control_text = "Normal-crown hold"
+                control_slope = float(hold.get("slope_pct", -2.0))
+            elif handoff is not None:
+                control_text = Super.format_station(float(handoff), True)
+                control_slope = float(lane.get("handoff_slope_pct") or 0.0)
+            else:
+                control_text = "Not recorded"
+                control_slope = 0.0
             lane_summary.append([
                 Paragraph(side.title(), styles["TableCell"]),
-                Paragraph(Super.format_station(float(lane.get("handoff_station_ft", 0.0)), True), styles["TableCell"]),
-                Paragraph(f"{float(lane.get('handoff_slope_pct', 0.0)):+.2f}%", styles["TableCellRight"]),
+                Paragraph(control_text, styles["TableCell"]),
+                Paragraph(f"{control_slope:+.2f}%", styles["TableCellRight"]),
                 Paragraph(f"{float(lane.get('outgoing_rotation_length_ft', 0.0)):.2f} ft", styles["TableCellRight"]),
                 Paragraph(f"{float(lane.get('remaining_incoming_rotation_length_ft', 0.0)):.2f} ft", styles["TableCellRight"]),
                 Paragraph(hold_text, styles["TableCell"]),
@@ -608,7 +618,7 @@ def export_pdf(path: str, curves: Iterable[dict], corridor_qa: dict | None = Non
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
-        story.extend([Paragraph("Lane handoffs", styles["Section"]), pair_table])
+        story.extend([Paragraph("Lane transition controls", styles["Section"]), pair_table])
         related_findings = [
             finding for finding in (corridor_qa or {}).get("findings", []) or []
             if set(finding.get("curve_indexes", []) or []) == {prior_index, following_index}

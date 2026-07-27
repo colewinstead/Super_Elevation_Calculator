@@ -151,8 +151,8 @@ def build_reverse_pair_plan(
         elif outgoing_nc <= incoming_nc + 1e-7:
             hold_start = outgoing_nc
             hold_end = max(outgoing_nc, incoming_nc)
-            handoff = 0.5 * (hold_start + hold_end)
-            handoff_slope = normal_crown
+            handoff = None
+            handoff_slope = None
             mode = "normal_crown_hold"
         else:
             denominator = outgoing_signed_rate - incoming_signed_rate
@@ -186,14 +186,13 @@ def build_reverse_pair_plan(
                 raise ValueError(f"The {side} lane handoff slope is outside zero-to-normal-crown.")
             mode = "standard_rate_intersection"
 
-        # A normal-crown hold may sit partly or wholly outside the geometric
-        # PT-to-PC tangent while the two standard-rate rotation segments still
-        # pass continuously through that tangent.  In that mode the hold
-        # boundaries, rather than its reporting midpoint, control the profile.
-        # Requiring the midpoint itself to be in the tangent created a false
-        # invalid-handoff range immediately above Tmin.
-        if hold_start is None and not _between(handoff, prior_pt, following_pc):
-            raise ValueError(f"The {side} lane handoff is outside the intervening tangent.")
+        # PT and PC are geometric reference points inside the two recorded
+        # runoffs, not hard limits on a reverse-transition rate change.  When
+        # unequal standard rates meet, their continuous intersection may fall
+        # just before PT or just after PC.  The two unchanged full-super
+        # stations are the actual transition limits.
+        if handoff is not None and not _between(handoff, prior_full, following_full):
+            raise ValueError(f"The {side} lane handoff is outside the full-super transition limits.")
 
         outgoing_end_station = hold_start if hold_start is not None else handoff
         outgoing_end_slope = normal_crown if hold_start is not None else handoff_slope
@@ -207,7 +206,7 @@ def build_reverse_pair_plan(
                 if station <= hold_end:
                     return normal_crown
                 return _line_value(station, following_full, end_slope, incoming_signed_rate)
-            if station <= handoff:
+            if handoff is not None and station <= handoff:
                 return _line_value(station, prior_full, start_slope, outgoing_signed_rate)
             return _line_value(station, following_full, end_slope, incoming_signed_rate)
 
@@ -245,19 +244,20 @@ def build_reverse_pair_plan(
                     reverse_pair_critical=True,
                 )
             )
-        handoff_label = "0% / HANDOFF" if abs(handoff_slope) <= 1e-7 else "HANDOFF"
-        handoff_event = _event(
-            handoff_label,
-            handoff,
-            handoff_slope,
-            "Continuous lane-specific handoff between the two standard-rate transitions",
-            "Reverse handoff",
-            reverse_pair_id=pair_id,
-            reverse_pair_critical=True,
-        )
-        prior_events.append(handoff_event)
-
-        following_events = [dict(handoff_event)]
+        following_events: list[dict[str, Any]] = []
+        if handoff is not None and handoff_slope is not None:
+            handoff_label = "0% / HANDOFF" if abs(handoff_slope) <= 1e-7 else "HANDOFF"
+            handoff_event = _event(
+                handoff_label,
+                handoff,
+                handoff_slope,
+                "Continuous lane-specific handoff between the two standard-rate transitions",
+                "Reverse handoff",
+                reverse_pair_id=pair_id,
+                reverse_pair_critical=True,
+            )
+            prior_events.append(handoff_event)
+            following_events.append(dict(handoff_event))
         if hold_end is not None:
             following_events.append(
                 _event(
@@ -333,10 +333,12 @@ def build_reverse_pair_plan(
             "incoming_rate_pct_per_ft": following_rate,
             "handoff_station_ft": handoff,
             "handoff_slope_pct": handoff_slope,
-            "outgoing_distance_to_handoff_ft": handoff - prior_full,
-            "remaining_incoming_distance_ft": following_full - handoff,
+            "outgoing_distance_to_handoff_ft": None if handoff is None else handoff - prior_full,
+            "remaining_incoming_distance_ft": None if handoff is None else following_full - handoff,
             "outgoing_rotation_length_ft": outgoing_end_station - prior_full,
             "remaining_incoming_rotation_length_ft": following_full - incoming_start_station,
+            "transition_start_ft": prior_full,
+            "transition_end_ft": following_full,
             "zero_stations_ft": zero_stations,
             "normal_crown_hold": (
                 None
@@ -345,6 +347,7 @@ def build_reverse_pair_plan(
                     "start_ft": hold_start,
                     "end_ft": hold_end,
                     "length_ft": max(0.0, hold_end - hold_start),
+                    "slope_pct": normal_crown,
                 }
             ),
             "prior_events": prior_events,
