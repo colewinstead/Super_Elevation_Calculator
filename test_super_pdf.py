@@ -120,17 +120,64 @@ class PdfReportTests(unittest.TestCase):
         curves = super_batch.coordinate_reverse_curve_transitions([prior, following], pairs=[[0, 1]])
 
         content = self.export(curves)
-        self.assertEqual(self.page_count(content), 6)
+        self.assertEqual(self.page_count(content), 4)
         self.assertIn(b"Reverse Curve Pair 1-2", content)
         self.assertIn(b"Lane-specific standard-rate transition record", content)
-        self.assertIn(b"Lane handoffs", content)
+        self.assertIn(b"Lane transition controls", content)
         self.assertIn(b"ZERO CROSSINGS", content)
-        self.assertIn(b"HANDOFF", content)
+        self.assertNotIn(b"HANDOFF", content)
         self.assertIn(b"NC HOLD", content)
         self.assertIn(b"START", content)
         self.assertIn(b"END", content)
         self.assertNotIn(b"slower than standard", content)
         self.assertIn(b"Tmin = 0.7Lr", content)
+
+    def test_reverse_curve_report_records_real_handoff_after_pc(self):
+        common = {
+            "speed": "55", "facility": "centerline", "area": "rural",
+            "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
+        }
+
+        def build(incoming_pc: float) -> list[dict]:
+            return super_batch.build_curves_from_presets(
+                [
+                    {
+                        "pc_station_label": "1000",
+                        "pt_station_label": "2000",
+                        "radius_ft": 3000.0,
+                        "curve_direction": "left",
+                        "curve_name": "Outgoing",
+                        "alignment_name": "ML",
+                    },
+                    {
+                        "pc_station_label": str(incoming_pc),
+                        "pt_station_label": str(incoming_pc + 1000.0),
+                        "radius_ft": 6000.0,
+                        "curve_direction": "right",
+                        "curve_name": "Incoming",
+                        "alignment_name": "ML",
+                    },
+                ],
+                common,
+            )
+
+        provisional = build(2100.0)
+        minimum = 0.7 * provisional[0]["results"]["Lr"] + 0.7 * provisional[1]["results"]["Lr"]
+        curves = super_batch.coordinate_reverse_curve_transitions(
+            build(2000.0 + minimum + 0.1),
+            pairs=[[0, 1]],
+        )
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        intersection_lane = next(
+            lane for lane in check["lanes"].values()
+            if lane["mode"] == "standard_rate_intersection"
+        )
+
+        content = self.export(curves)
+        handoff_label = Super.format_station(intersection_lane["handoff_station_ft"], True).encode()
+        self.assertIn(b"HANDOFF", content)
+        self.assertIn(handoff_label, content)
+        self.assertIn(b"Lane transition controls", content)
 
     def test_normal_crown_manual_override_and_long_notes_are_reported(self):
         normal = self.tdot_curve(normal_crown=True)

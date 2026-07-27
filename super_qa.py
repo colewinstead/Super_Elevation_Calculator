@@ -16,13 +16,35 @@ def _within(value: float, start: float, end: float, tolerance: float = 1e-7) -> 
     return min(start, end) - tolerance <= value <= max(start, end) + tolerance
 
 
-def _reverse_lane_issue(lane: dict, tangent_start: float, tangent_end: float) -> str | None:
+def _reverse_lane_issue(
+    lane: dict,
+    tangent_start: float,
+    tangent_end: float,
+    expected_transition_start: float | None = None,
+    expected_transition_end: float | None = None,
+) -> str | None:
     try:
-        handoff = float(lane["handoff_station_ft"])
         outgoing_rate = float(lane["outgoing_rate_pct_per_ft"])
         incoming_rate = float(lane["incoming_rate_pct_per_ft"])
     except (KeyError, TypeError, ValueError):
-        return "missing handoff or standard-rate metadata"
+        return "missing standard-rate metadata"
+    try:
+        transition_start = float(lane.get("transition_start_ft", tangent_start))
+        transition_end = float(lane.get("transition_end_ft", tangent_end))
+    except (TypeError, ValueError):
+        return "full-super transition limits are invalid"
+    if not all(math.isfinite(value) for value in (outgoing_rate, incoming_rate, transition_start, transition_end)):
+        return "standard-rate or full-super metadata is non-finite"
+    if expected_transition_start is not None and not math.isclose(
+        transition_start, float(expected_transition_start), rel_tol=0.0, abs_tol=1e-7
+    ):
+        return "recorded transition start does not match the outgoing full-super station"
+    if expected_transition_end is not None and not math.isclose(
+        transition_end, float(expected_transition_end), rel_tol=0.0, abs_tol=1e-7
+    ):
+        return "recorded transition end does not match the incoming full-super station"
+    if transition_end <= transition_start:
+        return "full-super transition limits are reversed"
     hold = lane.get("normal_crown_hold")
     if hold:
         try:
@@ -35,27 +57,47 @@ def _reverse_lane_issue(lane: dict, tangent_start: float, tangent_end: float) ->
             return "normal-crown hold stations are reversed"
         if not math.isclose(hold_length, max(0.0, hold_end - hold_start), rel_tol=1e-7, abs_tol=1e-6):
             return "normal-crown hold length does not match its stations"
-        if not _within(handoff, hold_start, hold_end):
-            return "normal-crown hold handoff is outside the recorded hold"
-    elif not _within(handoff, tangent_start, tangent_end):
-        return "handoff is outside the intervening tangent"
+        if not _within(hold_start, transition_start, transition_end) or not _within(
+            hold_end, transition_start, transition_end
+        ):
+            return "normal-crown hold is outside the full-super transition limits"
+        # Older recorded engine results may include a reporting midpoint inside
+        # the hold. It is ignored for validity; current results no longer
+        # create or export that artificial event.
+    else:
+        try:
+            handoff = float(lane["handoff_station_ft"])
+            handoff_slope = float(lane["handoff_slope_pct"])
+        except (KeyError, TypeError, ValueError):
+            return "missing handoff metadata"
+        if not math.isfinite(handoff) or not math.isfinite(handoff_slope):
+            return "handoff metadata is non-finite"
+        if not _within(handoff, transition_start, transition_end):
+            return "handoff is outside the full-super transition limits"
     if outgoing_rate <= 0.0 or incoming_rate <= 0.0:
         return "recorded standard rate is not positive"
 
-    station_slopes: dict[float, set[float]] = {}
+    raw_points: list[tuple[float, float]] = []
     for event in lane.get("profile_events", []) or []:
         try:
-            station = round(float(event["station_ft"]), 7)
-            slope = round(float(event["slope_pct"]), 7)
+            station = float(event["station_ft"])
+            slope = float(event["slope_pct"])
         except (KeyError, TypeError, ValueError):
             return "profile contains an invalid station or slope"
-        station_slopes.setdefault(station, set()).add(slope)
-    if len(station_slopes) < 2:
+        if not math.isfinite(station) or not math.isfinite(slope):
+            return "profile contains a non-finite station or slope"
+        raw_points.append((station, slope))
+    raw_points.sort()
+    points: list[tuple[float, float]] = []
+    for station, slope in raw_points:
+        if points and math.isclose(station, points[-1][0], rel_tol=0.0, abs_tol=1e-7):
+            if not math.isclose(slope, points[-1][1], rel_tol=0.0, abs_tol=1e-7):
+                return "profile contains a slope discontinuity"
+            continue
+        points.append((station, slope))
+    if len(points) < 2:
         return "profile does not contain enough events to verify"
-    if any(len(slopes) != 1 for slopes in station_slopes.values()):
-        return "profile contains a slope discontinuity"
 
-    points = sorted((station, next(iter(slopes))) for station, slopes in station_slopes.items())
     allowed_rates = (outgoing_rate, incoming_rate)
     for start, end in zip(points, points[1:]):
         distance = end[0] - start[0]
@@ -189,6 +231,159 @@ def curve_diagram(results: dict, direction: str) -> dict[str, Any]:
     }
 
 
+def _profile_point(results: dict, event: dict) -> dict[str, Any]:
+    station = float(event["station_ft"])
+    return {
+        "station_ft": station,
+        "station": Super.format_result_station(results, station, True),
+        "slope_pct": float(event["slope_pct"]),
+        "label": str(event.get("label") or event.get("event_type") or "Reverse transition"),
+        "event_type": str(event.get("event_type") or "Reverse transition"),
+    }
+
+
+def _dedupe_profile(points: list[dict]) -> list[dict]:
+    deduped: list[dict] = []
+    for point in sorted(points, key=lambda item: float(item["station_ft"])):
+        if deduped and math.isclose(
+            float(point["station_ft"]),
+            float(deduped[-1]["station_ft"]),
+            rel_tol=0.0,
+            abs_tol=1e-7,
+        ):
+            if not math.isclose(
+                float(point["slope_pct"]),
+                float(deduped[-1]["slope_pct"]),
+                rel_tol=0.0,
+                abs_tol=1e-7,
+            ):
+                raise ValueError("Reverse-pair plot profile contains a slope discontinuity.")
+            continue
+        deduped.append(point)
+    return deduped
+
+
+def _refresh_diagram_navigation(diagram: dict) -> None:
+    all_points = [
+        point
+        for lane in ("left", "right")
+        for point in diagram.get("profiles", {}).get(lane, [])
+    ]
+    diagram["domain"] = {
+        "start_ft": min((float(point["station_ft"]) for point in all_points), default=0.0),
+        "end_ft": max((float(point["station_ft"]) for point in all_points), default=0.0),
+    }
+    groups: dict[float, dict[str, Any]] = {}
+    for lane in ("left", "right"):
+        for point in diagram.get("profiles", {}).get(lane, []):
+            key = round(float(point["station_ft"]), 6)
+            group = groups.setdefault(
+                key,
+                {
+                    "station_ft": float(point["station_ft"]),
+                    "station": str(point["station"]),
+                    "labels": set(),
+                    "lanes": set(),
+                },
+            )
+            group["labels"].add(str(point["label"]))
+            group["lanes"].add(lane)
+    for marker in diagram.get("markers", []):
+        key = round(float(marker["station_ft"]), 6)
+        group = groups.setdefault(
+            key,
+            {
+                "station_ft": float(marker["station_ft"]),
+                "station": str(marker["station"]),
+                "labels": set(),
+                "lanes": set(),
+            },
+        )
+        group["labels"].add(str(marker["label"]))
+    diagram["snap_points"] = [
+        {
+            **group,
+            "labels": sorted(group["labels"]),
+            "lanes": sorted(group["lanes"]),
+        }
+        for group in sorted(groups.values(), key=lambda item: item["station_ft"])
+    ]
+
+
+def _coordinate_corridor_plot_profiles(diagrams: list[dict], curves: list[dict]) -> None:
+    diagrams_by_index = {
+        int(diagram["curve_index"]): diagram
+        for diagram in diagrams
+    }
+    seen_pairs: set[str] = set()
+    for curve in curves:
+        results = curve.get("results", {}) or {}
+        for check in (results.get("reverse_curve_coordination", {}) or {}).get("checks", []) or []:
+            pair_id = str(check.get("pair_id") or "")
+            if not pair_id or pair_id in seen_pairs or check.get("status") != "coordinated":
+                continue
+            seen_pairs.add(pair_id)
+            indexes = list(check.get("paired_curve_indexes", []))
+            if len(indexes) != 2:
+                continue
+            prior_index, following_index = int(indexes[0]), int(indexes[1])
+            if (
+                prior_index not in diagrams_by_index
+                or following_index not in diagrams_by_index
+                or not (0 <= prior_index < len(curves))
+                or not (0 <= following_index < len(curves))
+            ):
+                continue
+            prior_diagram = diagrams_by_index[prior_index]
+            following_diagram = diagrams_by_index[following_index]
+            prior_results = curves[prior_index].get("results", {}) or {}
+            following_results = curves[following_index].get("results", {}) or {}
+
+            for lane_name in ("left", "right"):
+                lane = (check.get("lanes", {}) or {}).get(lane_name, {}) or {}
+                canonical = _dedupe_profile([
+                    _profile_point(prior_results, event)
+                    for event in lane.get("profile_events", []) or []
+                ])
+                if not canonical:
+                    continue
+                transition_start = float(lane.get("transition_start_ft", canonical[0]["station_ft"]))
+                transition_end = float(lane.get("transition_end_ft", canonical[-1]["station_ft"]))
+                hold = lane.get("normal_crown_hold") or {}
+                handoff = lane.get("handoff_station_ft")
+                if hold:
+                    split = float(hold["end_ft"])
+                elif handoff is not None:
+                    split = float(handoff)
+                else:
+                    continue
+                prior_original = prior_diagram["profiles"][lane_name]
+                following_original = following_diagram["profiles"][lane_name]
+                prior_diagram["profiles"][lane_name] = _dedupe_profile([
+                    *[
+                        point for point in prior_original
+                        if float(point["station_ft"]) < transition_start - 1e-7
+                    ],
+                    *[
+                        point for point in canonical
+                        if float(point["station_ft"]) <= split + 1e-7
+                    ],
+                ])
+                following_diagram["profiles"][lane_name] = _dedupe_profile([
+                    *[
+                        point for point in canonical
+                        if float(point["station_ft"]) >= split - 1e-7
+                    ],
+                    *[
+                        point for point in following_original
+                        if float(point["station_ft"]) > transition_end + 1e-7
+                    ],
+                ])
+
+            _refresh_diagram_navigation(prior_diagram)
+            _refresh_diagram_navigation(following_diagram)
+
+
 def corridor_diagram(curves: list[dict]) -> dict[str, Any]:
     diagrams: list[dict[str, Any]] = []
     for index, curve in enumerate(curves):
@@ -206,6 +401,7 @@ def corridor_diagram(curves: list[dict]) -> dict[str, Any]:
         })
         diagrams.append(diagram)
 
+    _coordinate_corridor_plot_profiles(diagrams, curves)
     starts = [diagram["domain"]["start_ft"] for diagram in diagrams]
     ends = [diagram["domain"]["end_ft"] for diagram in diagrams]
     return {
@@ -298,11 +494,55 @@ def diagram_lookup(results: dict, direction: str, station: float) -> dict[str, A
     points = lane_profile_points(results, direction)
     lanes: dict[str, dict] = {}
     for lane in ("left", "right"):
+        pair_lane = next(
+            (
+                (check.get("lanes", {}) or {}).get(lane)
+                for check in (results.get("reverse_curve_coordination", {}) or {}).get("checks", []) or []
+                if check.get("status") == "coordinated"
+                and (check.get("lanes", {}) or {}).get(lane)
+                and float((check["lanes"][lane]).get("transition_start_ft", math.inf)) - 1e-7
+                <= station
+                <= float((check["lanes"][lane]).get("transition_end_ft", -math.inf)) + 1e-7
+            ),
+            None,
+        )
         interval = next(
             (item for item in diagram["intervals"][lane] if item["start_ft"] - 1e-8 <= station <= item["end_ft"] + 1e-8),
             None,
         )
-        slope = slope_at_station(points[lane], station)
+        if pair_lane:
+            pair_points = _dedupe_profile([
+                _profile_point(results, event)
+                for event in pair_lane.get("profile_events", []) or []
+            ])
+            slope = slope_at_station(
+                [
+                    (float(point["station_ft"]), float(point["slope_pct"]))
+                    for point in pair_points
+                ],
+                station,
+            )
+            hold = pair_lane.get("normal_crown_hold") or {}
+            in_hold = bool(
+                hold
+                and float(hold["start_ft"]) - 1e-7
+                <= station
+                <= float(hold["end_ft"]) + 1e-7
+            )
+            source = _source_map(results).get(
+                "Crown thresholds" if in_hold else "Runoff length",
+                {
+                    "component": "Crown thresholds" if in_hold else "Runoff length",
+                    "reference": "Recorded reverse-curve calculation",
+                    "mode": "automatic",
+                },
+            )
+            interval = {
+                **source,
+                "phase": "Normal crown hold" if in_hold else "Reverse curve runoff",
+            }
+        else:
+            slope = slope_at_station(points[lane], station)
         lanes[lane] = {
             "slope_pct": slope,
             "slope_label": super_exports.format_slope_label(slope),
@@ -509,6 +749,8 @@ def analyze_corridor(data: super_landxml.LandXMLData, curves: list[dict], exclud
             lanes = pair_check.get("lanes", {}) or {}
             tangent_start = float(pair_check.get("tangent_start_ft", 0.0))
             tangent_end = float(pair_check.get("tangent_end_ft", 0.0))
+            transition_start = float(prior.get("results", {}).get("full_super_out_ft", tangent_start))
+            transition_end = float(following.get("results", {}).get("full_super_ft", tangent_end))
             invalid_lane = next(
                 (
                     (side, "missing lane transition metadata")
@@ -516,7 +758,15 @@ def analyze_corridor(data: super_landxml.LandXMLData, curves: list[dict], exclud
                     else (side, issue)
                     for side in ("left", "right")
                     if side not in lanes
-                    or (issue := _reverse_lane_issue(lanes[side], tangent_start, tangent_end)) is not None
+                    or (
+                        issue := _reverse_lane_issue(
+                            lanes[side],
+                            tangent_start,
+                            tangent_end,
+                            transition_start,
+                            transition_end,
+                        )
+                    ) is not None
                 ),
                 None,
             )

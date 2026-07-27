@@ -41,16 +41,22 @@ For each lane independently:
 - Tangent runout is omitted only between the two linked curves.
 - The outgoing line continues from its recorded full-super point at the outgoing curve's signed standard rate.
 - The incoming line is extended backward from its recorded full-super point at the incoming curve's signed standard rate.
-- If both lines occupy the same zero-to-normal-crown interval, they join at their station/slope intersection. The slope remains continuous, although unequal curve rates may produce a rate change at the handoff.
+- If both lines occupy the same zero-to-normal-crown interval, they join at their station/slope intersection. The slope remains continuous, although unequal curve rates may produce a rate change at the handoff. Because PT and PC lie within the two recorded runoffs, a valid intersection may occur just before PT or just after PC; it must remain between the unchanged full-super stations.
 - If the outgoing lane reaches normal crown first, it holds normal crown until the incoming standard-rate line begins.
-- A lane-specific normal-crown hold may fall partly or wholly outside the PT-to-PC tangent. Its outgoing and incoming standard-rate segments must still form one continuous profile through the tangent; the location of the hold's reporting midpoint is not a validity criterion.
+- A lane-specific normal-crown hold may fall partly or wholly outside the PT-to-PC tangent. Its outgoing and incoming standard-rate segments must still form one continuous profile through the tangent. The hold start and end are the only engineering control points; no artificial midpoint handoff is created.
 - At exactly `Tmin`, both lanes retain one shared 0% meeting station.
 - A longer tangent does not stretch either transition or slow its rate.
 - Every non-flat segment is linear and uses one of the two recorded standard rates.
 
-If the tangent is shorter than `Tmin`, the pair is invalid, or a continuous in-tangent standard-rate handoff cannot be constructed, coordination is not applied. Corridor QA emits a blocking finding and leaves both independent curve calculations intact. Criteria profile, direction, eligibility, or entitlement failures never cause a silent substitution or altered calculation.
+If the tangent is shorter than `Tmin`, the pair is invalid, or a continuous standard-rate profile cannot be constructed between the two full-super stations, coordination is not applied. Corridor QA emits a blocking finding and leaves both independent curve calculations intact. Criteria profile, direction, eligibility, or entitlement failures never cause a silent substitution or altered calculation.
 
 For the sanitized `tests/fixtures/cw_reverse_curve.xml` regression at 65 mph, the tangent is 123.0 ft and `Tmin` is 86.1 ft. Both lanes retain the calculated standard rate and include a lane-specific normal-crown hold before the incoming transition begins.
+
+## Coordinated presentation
+
+- The browser corridor diagram renders one continuous physical-lane profile through a linked pair. The outgoing curve stops at the lane handoff, or at the end of a normal-crown hold, and the incoming curve starts at that same station and slope. The separate curve records are not extended across one another.
+- PDF and ORD rows retain the descriptive reverse-event names needed to reconstruct the transition.
+- Plan view and overlay DXF reverse controls use the same compact callout style as ordinary controls: station (with `PC` or `PT` when applicable) and signed slope. Leaders, stations, and slopes use `ALI_DESIGN_ML_LABELS`, `ALI_DESIGN_ML_STA`, and `ALI_DESIGN_ML_LABELS_TX`; duplicate station/slope controls are collapsed and lane-side labels are packed apart.
 
 ## Change control
 

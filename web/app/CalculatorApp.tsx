@@ -830,7 +830,17 @@ export default function CalculatorApp() {
     }
     const left = check.lanes?.left;
     const right = check.lanes?.right;
-    return `Standard rate · ${available} ft available / ${minimum} ft minimum · handoffs L ${Number(left?.handoff_station_ft || 0).toFixed(3)}, R ${Number(right?.handoff_station_ft || 0).toFixed(3)}`;
+    const laneControl = (lane: Dict | undefined) => {
+      const hold = lane?.normal_crown_hold;
+      if (hold) {
+        return `NC hold ${Number(hold.start_ft).toFixed(3)}–${Number(hold.end_ft).toFixed(3)}`;
+      }
+      if (lane?.handoff_station_ft != null) {
+        return `handoff ${Number(lane.handoff_station_ft).toFixed(3)} at ${Number(lane.handoff_slope_pct).toFixed(2)}%`;
+      }
+      return "control point unavailable";
+    };
+    return `Standard rate · ${available} ft available / ${minimum} ft minimum · L ${laneControl(left)} · R ${laneControl(right)}`;
   };
 
   return (

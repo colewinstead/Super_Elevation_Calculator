@@ -38,14 +38,12 @@ DEFAULT_CONFIG = {
         "overlay_leader": "ALI_DESIGN_ML_LABELS",
         "overlay_station": "ALI_DESIGN_ML_STA",
         "overlay_text": "ALI_DESIGN_ML_LABELS_TX",
-        "reverse_transition": "ALI_DESIGN_ML_SE_REVERSE",
     },
     "overlay_layer_styles": {
         "ALI_DESIGN_ML_CURVES": {"color": 8, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS": {"color": 10, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_STA": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
         "ALI_DESIGN_ML_LABELS_TX": {"color": 7, "linetype": "CONTINUOUS", "lineweight": 40},
-        "ALI_DESIGN_ML_SE_REVERSE": {"color": 3, "linetype": "CONTINUOUS", "lineweight": 40},
     },
 }
 
@@ -491,6 +489,52 @@ def _overlay_station_label(row: dict, curve: dict) -> str:
     return label
 
 
+def _reverse_station_label(row: dict, curve: dict) -> str:
+    """Use the normal compact callout text for a reverse-pair control."""
+    label = _overlay_station_label(row, curve)
+    event_type = str(row.get("event_type") or "").upper()
+    if event_type.startswith("PC ") and not label.startswith("PC "):
+        return f"PC {label}"
+    if event_type.startswith("PT ") and not label.startswith("PT "):
+        return f"PT {label}"
+    return label
+
+
+def _reverse_callout_key(row: dict) -> tuple[str, str, float, float]:
+    return (
+        str(row.get("reverse_pair_id") or ""),
+        str(row.get("side") or ""),
+        round(float(row["station"]), 6),
+        round(float(row["slope_percent"]), 6),
+    )
+
+
+def _compact_reverse_callouts(rows: list[dict]) -> list[dict]:
+    """Collapse reverse events that would render the same station/slope callout."""
+    compact: dict[tuple[str, str, float, float], dict] = {}
+
+    def priority(row: dict) -> int:
+        event_type = str(row.get("event_type") or "").upper()
+        if event_type.startswith(("PC ", "PT ")):
+            return 0
+        if event_type in {"REVERSE HANDOFF", "REVERSE CURVE ZERO"}:
+            return 1
+        return 2
+
+    for row in rows:
+        key = _reverse_callout_key(row)
+        current = compact.get(key)
+        if current is None or priority(row) < priority(current):
+            compact[key] = row
+    return sorted(
+        compact.values(),
+        key=lambda row: (
+            str(row.get("side") or ""),
+            float(row["station"]),
+        ),
+    )
+
+
 def build_overlay_drawing(
     curves: Iterable[dict],
     landxml: super_landxml.LandXMLData,
@@ -500,7 +544,8 @@ def build_overlay_drawing(
     cfg = _cfg(config)
     writer = DxfWriter()
     warnings = list(landxml.warnings)
-    drawn_reverse_events: set[tuple[str, str, str, float]] = set()
+    curve_list = list(curves)
+    drawn_reverse_events: set[tuple[str, str, float, float]] = set()
 
     for segment in landxml._segments:
         if isinstance(segment, super_landxml.LineSegment):
@@ -520,13 +565,41 @@ def build_overlay_drawing(
                 points.append(landxml.xy_at_station(station))
             writer.add_polyline(points, cfg["layers"]["alignment"])
 
-    for curve_index, curve in enumerate(curves):
+    alignment_start, alignment_end = landxml.station_range()
+    all_rows = super_exports.build_normalized_rows(curve_list)
+    reverse_rows = _compact_reverse_callouts([
+        row
+        for row in all_rows
+        if row.get("reverse_pair_critical") and row.get("reverse_pair_id")
+    ])
+    _pack_overlay_label_stations(
+        reverse_rows,
+        float(cfg["overlay_min_label_spacing"]),
+        float(cfg["overlay_label_gap"]),
+        alignment_start,
+        alignment_end,
+    )
+    reverse_label_stations = {
+        _reverse_callout_key(row): float(row.get("_label_station", row["station"]))
+        for row in reverse_rows
+    }
+    visible_reverse_keys = set(reverse_label_stations)
+
+    for curve_index, curve in enumerate(curve_list):
         meta = curve.get("meta", {}) or {}
-        rows = _overlay_rows(curve)
+        rows = sorted(
+            (
+                row for row in all_rows
+                if int(row.get("curve_index", -1)) == curve_index
+            ),
+            key=lambda row: (
+                float(row["station"]),
+                0 if row.get("side") == "left" else 1,
+            ),
+        )
         if not rows:
             warnings.append(f"Skipped overlay export for {meta.get('curve_name', 'curve')} because no station data was available.")
             continue
-        alignment_start, alignment_end = landxml.station_range()
         _pack_overlay_label_stations(
             rows,
             float(cfg["overlay_min_label_spacing"]),
@@ -541,15 +614,17 @@ def build_overlay_drawing(
             reverse_pair_id = str(row.get("reverse_pair_id") or "")
             reverse_critical = bool(row.get("reverse_pair_critical") and reverse_pair_id)
             if reverse_critical:
-                reverse_key = (
-                    reverse_pair_id,
-                    str(row.get("side") or ""),
-                    str(row.get("event_type") or ""),
-                    round(station, 6),
-                )
-                if reverse_key in drawn_reverse_events:
+                reverse_key = _reverse_callout_key(row)
+                if (
+                    reverse_key not in visible_reverse_keys
+                    or reverse_key in drawn_reverse_events
+                ):
                     continue
                 drawn_reverse_events.add(reverse_key)
+                row["_label_station"] = reverse_label_stations.get(
+                    reverse_key,
+                    float(row["station"]),
+                )
             try:
                 x, y = landxml.xy_at_station(station)
                 tx, ty = landxml.tangent_at_station(station)
@@ -564,30 +639,26 @@ def build_overlay_drawing(
             nx = -ty * lane_sign
             ny = tx * lane_sign
             ux, uy, rotation = _upright_text_axis(nx, ny)
-            station_label = _overlay_station_label(row, curve)
-            if reverse_critical:
-                station_label = f"{lane_side.upper()} {row['event_type']} {station_label}"
-            leader_layer = (
-                cfg["layers"]["reverse_transition"]
-                if reverse_critical else cfg["layers"]["overlay_leader"]
+            station_label = (
+                _reverse_station_label(row, curve)
+                if reverse_critical
+                else _overlay_station_label(row, curve)
             )
-            station_layer = (
-                cfg["layers"]["reverse_transition"]
-                if reverse_critical else cfg["layers"]["overlay_station"]
-            )
-            text_layer = (
-                cfg["layers"]["reverse_transition"]
-                if reverse_critical else cfg["layers"]["overlay_text"]
-            )
+            leader_layer = cfg["layers"]["overlay_leader"]
+            station_layer = cfg["layers"]["overlay_station"]
+            text_layer = cfg["layers"]["overlay_text"]
             callout_preview = {
                 "group_id": f"curve-{curve_index}-row-{row_index}",
                 "curve_index": curve_index,
                 "curve_name": str(meta.get("curve_name", row["curve_name"])),
                 "station": str(row["station_label"]),
                 "station_ft": station,
+                "label_station_ft": label_station,
                 "side": lane_side,
                 "slope": str(row["slope_label"]),
                 "event_type": str(row["event_type"]),
+                "reverse_pair_id": reverse_pair_id or None,
+                "reverse_pair_critical": reverse_critical,
             }
 
             elbow_x = x + nx * float(cfg["tick_length"])

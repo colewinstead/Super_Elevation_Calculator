@@ -631,7 +631,7 @@ class SuperExportTests(unittest.TestCase):
         self.assertIn("PC 120+00.000", labels)
         self.assertIn("PT 140+00.000", labels)
 
-    def test_overlay_dxf_places_every_reverse_pair_event_on_dedicated_layer(self):
+    def test_overlay_dxf_uses_compact_reverse_callouts_on_normal_layers(self):
         content = CW_REVERSE_FIXTURE.read_text(encoding="utf-8")
         landxml = super_landxml.parse_landxml_text(content, CW_REVERSE_FIXTURE.name)
         independent = super_service.build_all_landxml_curves(
@@ -654,33 +654,136 @@ class SuperExportTests(unittest.TestCase):
             super_dxf.export_overlay_dxf(path, curves, landxml)
             entities = _parse_dxf_entities(path.read_text(encoding="utf-8"))
 
-        reverse_entities = [
-            entity for entity in entities
-            if entity.get("8") == "ALI_DESIGN_ML_SE_REVERSE"
-        ]
-        self.assertTrue(reverse_entities)
-        reverse_text = [
+        self.assertFalse(any(
+            entity.get("8") == "ALI_DESIGN_ML_SE_REVERSE"
+            for entity in entities
+        ))
+        station_text = [
             entity.get("1", "")
-            for entity in reverse_entities
+            for entity in entities
             if entity["type"] == "TEXT"
+            and entity.get("8") == "ALI_DESIGN_ML_STA"
         ]
+        slope_text = [
+            entity.get("1", "")
+            for entity in entities
+            if entity["type"] == "TEXT"
+            and entity.get("8") == "ALI_DESIGN_ML_LABELS_TX"
+        ]
+        compact_rows = super_dxf._compact_reverse_callouts(critical_rows)
         expected_callouts = {
-            f"{row['side'].upper()} {row['event_type']} "
-            f"{super_dxf._overlay_station_label(row, curves[int(row['curve_index'])])}"
-            for row in critical_rows
+            super_dxf._reverse_station_label(
+                row,
+                curves[int(row["curve_index"])],
+            )
+            for row in compact_rows
         }
-        self.assertTrue(expected_callouts.issubset(set(reverse_text)))
-        for row in critical_rows:
-            self.assertIn(row["slope_label"], reverse_text)
+        self.assertTrue(expected_callouts.issubset(set(station_text)))
+        self.assertTrue({row["slope_label"] for row in compact_rows}.issubset(set(slope_text)))
+        self.assertFalse(any(
+            "Reverse" in text or text.startswith(("LEFT ", "RIGHT "))
+            for text in station_text
+        ))
 
-        callout_entities = [
-            entity for entity in reverse_entities
-            if entity["type"] == "TEXT" and entity.get("1", "") in expected_callouts
+        preview = super_dxf.overlay_preview_model(curves, landxml)
+        reverse_station_entities = [
+            entity
+            for entity in preview["entities"]
+            if entity["type"] == "TEXT"
+            and entity["layer"] == "ALI_DESIGN_ML_STA"
+            and (entity.get("preview") or {}).get("reverse_pair_critical")
         ]
-        positions = {(entity.get("10"), entity.get("20")) for entity in callout_entities}
-        self.assertEqual(len(positions), len(callout_entities))
+        positions = {
+            (round(float(entity["x"]), 7), round(float(entity["y"]), 7))
+            for entity in reverse_station_entities
+        }
+        self.assertEqual(len(positions), len(reverse_station_entities))
+        for side in ("left", "right"):
+            label_stations = sorted(
+                float(entity["preview"]["label_station_ft"])
+                for entity in reverse_station_entities
+                if entity["preview"]["side"] == side
+            )
+            self.assertTrue(all(
+                following - prior
+                >= super_dxf.DEFAULT_CONFIG["overlay_min_label_spacing"] - 1e-7
+                for prior, following in zip(label_stations, label_stations[1:])
+            ))
+        self.assertTrue(all(
+            entity["layer"] in {
+                "ALI_DESIGN_ML_LABELS",
+                "ALI_DESIGN_ML_STA",
+                "ALI_DESIGN_ML_LABELS_TX",
+            }
+            for entity in preview["entities"]
+            if (entity.get("preview") or {}).get("reverse_pair_critical")
+        ))
 
-    def test_ord_rows_include_canonical_reverse_handoffs_zeros_and_crown_holds(self):
+    def test_ord_and_dxf_include_real_unequal_rate_handoff_after_pc(self):
+        content = CW_REVERSE_FIXTURE.read_text(encoding="utf-8")
+        landxml = super_landxml.parse_landxml_text(content, CW_REVERSE_FIXTURE.name)
+        curves = super_batch.build_curves_from_presets(
+            [
+                {
+                    "pc_station_label": "149576.601",
+                    "pt_station_label": "150576.601",
+                    "radius_ft": 3000.0,
+                    "curve_direction": "left",
+                    "curve_name": "Outgoing",
+                    "alignment_name": "ML",
+                },
+                {
+                    "pc_station_label": "150704.801",
+                    "pt_station_label": "151704.801",
+                    "radius_ft": 6000.0,
+                    "curve_direction": "right",
+                    "curve_name": "Incoming",
+                    "alignment_name": "ML",
+                },
+            ],
+            {
+                "speed": "55", "facility": "centerline", "area": "rural",
+                "lane_width": "12", "lanes_rotated": "2", "normal_crown": "0.02",
+            },
+        )
+        curves = super_batch.coordinate_reverse_curve_transitions(curves, pairs=[[0, 1]])
+        check = curves[0]["results"]["reverse_curve_coordination"]["checks"][0]
+        self.assertEqual(check["status"], "coordinated")
+
+        handoff_row = next(
+            row for row in super_exports.build_normalized_rows(curves)
+            if row.get("reverse_pair_critical")
+            and row["event_type"] == "Reverse handoff"
+        )
+        self.assertGreater(handoff_row["station"], curves[1]["results"]["pc_ft"])
+        self.assertLess(handoff_row["station"], curves[1]["results"]["full_super_ft"])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "unequal_rate_handoff.dxf"
+            super_dxf.export_overlay_dxf(path, curves, landxml)
+            entities = _parse_dxf_entities(path.read_text(encoding="utf-8"))
+
+        station_text = {
+            entity.get("1", "")
+            for entity in entities
+            if entity["type"] == "TEXT"
+            and entity.get("8") == "ALI_DESIGN_ML_STA"
+        }
+        slope_text = {
+            entity.get("1", "")
+            for entity in entities
+            if entity["type"] == "TEXT"
+            and entity.get("8") == "ALI_DESIGN_ML_LABELS_TX"
+        }
+        expected_callout = super_dxf._reverse_station_label(
+            handoff_row,
+            curves[int(handoff_row["curve_index"])],
+        )
+        self.assertIn(expected_callout, station_text)
+        self.assertIn(handoff_row["slope_label"], slope_text)
+        self.assertNotIn("ALI_DESIGN_ML_SE_REVERSE", {entity.get("8") for entity in entities})
+
+    def test_ord_rows_include_real_reverse_controls_without_artificial_hold_handoffs(self):
         content = CW_REVERSE_FIXTURE.read_text(encoding="utf-8")
         independent = super_service.build_all_landxml_curves(
             content,
@@ -694,7 +797,7 @@ class SuperExportTests(unittest.TestCase):
         rows = super_exports.build_normalized_rows(curves)
         reverse_rows = [row for row in rows if row.get("reverse_pair_critical")]
         event_types = {row["event_type"] for row in reverse_rows}
-        self.assertIn("Reverse handoff", event_types)
+        self.assertNotIn("Reverse handoff", event_types)
         self.assertIn("Reverse curve zero", event_types)
         self.assertIn("Normal crown hold start", event_types)
         self.assertIn("Normal crown hold end", event_types)
