@@ -67,6 +67,12 @@ test("renders the calculator directory and crushed stone base workspace", async 
   assert.match(source, /calculator: "crushed_stone_base"/);
   assert.match(source, /aria-invalid/);
   assert.match(source, /aria-live="polite"/);
+  assert.match(source, /Pavement width \(EOP to EOP\)/i);
+  assert.match(source, /Shoulder width \(each side\)/i);
+  assert.match(source, /Equivalent keyout width/i);
+  assert.match(source, /total for both sides/i);
+  assert.match(source, /Keyout run per side/i);
+  assert.match(source, /Pavement width \+ 2 × shoulder width \+ 2 × equivalent keyout width/i);
   assert.doesNotMatch(source, /localStorage|showSaveFilePicker|truckload|metric toggle/i);
 });
 
