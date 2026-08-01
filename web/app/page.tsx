@@ -4,7 +4,7 @@ import commercialManifest from "./generated/commercial-manifest.json";
 import criteriaProfiles from "./generated/criteria-profiles.json";
 import { PRO_PRICE } from "@/lib/billing/legal";
 
-const GITHUB_REPOSITORY = "https://github.com/colewinstead/Super_Elevation_Calculator";
+const GITHUB_REPOSITORY = "https://github.com/colewinstead/VeriCivil";
 
 const features = [
   {

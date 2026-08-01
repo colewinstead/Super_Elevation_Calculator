@@ -7,14 +7,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/colewinstead/Super_Elevation_Calculator?style=for-the-badge&color=2ea44f"></a>
-  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/actions/workflows/tests.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/colewinstead/Super_Elevation_Calculator/tests.yml?branch=main&style=for-the-badge&label=tests"></a>
+  <a href="https://github.com/colewinstead/VeriCivil/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/colewinstead/VeriCivil?style=for-the-badge&color=2ea44f"></a>
+  <a href="https://github.com/colewinstead/VeriCivil/actions/workflows/tests.yml"><img alt="Tests" src="https://img.shields.io/github/actions/workflow/status/colewinstead/VeriCivil/tests.yml?branch=main&style=for-the-badge&label=tests"></a>
   <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
   <img alt="Platform" src="https://img.shields.io/badge/Windows-Desktop-0078D4?style=for-the-badge&logo=windows11&logoColor=white">
 </p>
 
 <p align="center">
-  <a href="https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest"><strong>Download for Windows or macOS</strong></a>
+  <a href="https://github.com/colewinstead/VeriCivil/releases/latest"><strong>Download for Windows or macOS</strong></a>
   &nbsp;&middot;&nbsp;
   <a href="#quick-start">Run from source</a>
   &nbsp;&middot;&nbsp;
@@ -54,7 +54,7 @@ flowchart LR
 
 ## Download
 
-Download the latest Windows executable or native macOS disk image from [GitHub Releases](https://github.com/colewinstead/Super_Elevation_Calculator/releases/latest). Separate macOS builds are provided for Apple Silicon and Intel processors. Desktop applications are distributed as release assets instead of being stored in the source tree.
+Download the latest Windows executable or native macOS disk image from [GitHub Releases](https://github.com/colewinstead/VeriCivil/releases/latest). Separate macOS builds are provided for Apple Silicon and Intel processors. Desktop applications are distributed as release assets instead of being stored in the source tree.
 
 > [!IMPORTANT]
 > This is an engineering aid. Always validate criteria, stationing, coordinate systems, lane naming, and exported geometry against the governing standards and the project design file.
@@ -63,11 +63,11 @@ Download the latest Windows executable or native macOS disk image from [GitHub R
 
 Requires Python 3.11 or newer.
 
-The current application release is **1.4.24** and the calculation-engine release is **1.2.4**. The engine centralizes each MDOT lane transition as one piecewise-linear profile used by diagrams, lookup, QA, and exports. The outside lane runs from zero cross slope to full super, while the inside lane holds normal crown until the SE-3A `X1 = Lr(NC/e)` breakpoint and then rotates linearly to full super. Explicit reverse-curve pairs remove only the intervening tangent runout and require `Tmin = 0.7Lr(exit) + 0.7Lr(entry)`. Each lane retains the applicable standard `e/Lr` rate, joins continuously at an intersection when needed, or holds normal crown until the incoming transition begins. A valid unequal-rate intersection may occur just before PT or just after PC because both points lie within the recorded runoffs; the unchanged full-super stations bound the coordinated profile. A normal-crown hold records only its real start and end control points. A short or invalid pair blocks coordination without changing the independent curve results. See [`docs/MDOT_TRANSITION_MODEL.md`](docs/MDOT_TRANSITION_MODEL.md). These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
+The current application release is **1.4.25** and the calculation-engine release is **1.2.4**. The engine centralizes each MDOT lane transition as one piecewise-linear profile used by diagrams, lookup, QA, and exports. The outside lane runs from zero cross slope to full super, while the inside lane holds normal crown until the SE-3A `X1 = Lr(NC/e)` breakpoint and then rotates linearly to full super. Explicit reverse-curve pairs remove only the intervening tangent runout and require `Tmin = 0.7Lr(exit) + 0.7Lr(entry)`. Each lane retains the applicable standard `e/Lr` rate, joins continuously at an intersection when needed, or holds normal crown until the incoming transition begins. A valid unequal-rate intersection may occur just before PT or just after PC because both points lie within the recorded runoffs; the unchanged full-super stations bound the coordinated profile. A normal-crown hold records only its real start and end control points. A short or invalid pair blocks coordination without changing the independent curve results. See [`docs/MDOT_TRANSITION_MODEL.md`](docs/MDOT_TRANSITION_MODEL.md). These identifiers are defined once in `app_info.py` and are recorded in new project files and PDF reports.
 
 ```powershell
-git clone https://github.com/colewinstead/Super_Elevation_Calculator.git
-Set-Location .\Super_Elevation_Calculator
+git clone https://github.com/colewinstead/VeriCivil.git
+Set-Location .\VeriCivil
 python -m pip install -r .\requirements.txt
 python .\super_app.py
 ```
