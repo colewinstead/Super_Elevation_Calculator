@@ -314,7 +314,7 @@ sys.path.insert(0, "/app")
 import vericivil_service
 `);
 stonePyodide.globals.set("stone_payload", JSON.stringify({
-  segments: [{ name: "Mainline", length_ft: 100, width_ft: 20, thickness_in: 6 }],
+  segments: [{ name: "Mainline", length_ft: 100, pavement_width_ft: 20, shoulder_width_ft: 5, shoulder_slope_percent: 0, side_slope_h_to_v: 4, thickness_in: 6 }],
   tons_per_cubic_yard: 1.6875,
   waste_percent: 0,
 }));
@@ -324,7 +324,9 @@ const stoneProxy = stonePyodide.runPython(
 const stone = stoneProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
 stoneProxy.destroy();
 assert.equal(stone.ok, true);
-assert.equal(stone.result.totals.cubic_feet, 1000);
-assert.equal(stone.result.totals.base_tons, 62.5);
+assert.equal(stone.result.segments[0].equivalent_width_per_side_ft, 1);
+assert.equal(stone.result.segments[0].equivalent_width_both_sides_ft, 2);
+assert.equal(stone.result.totals.cubic_feet, 1600);
+assert.equal(stone.result.totals.base_tons, 100);
 
 console.log("Pyodide superelevation and crushed stone base parity passed.");

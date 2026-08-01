@@ -6,15 +6,27 @@ type SegmentInput = {
   id: number;
   name: string;
   length_ft: string;
-  width_ft: string;
+  pavement_width_ft: string;
+  shoulder_width_ft: string;
+  shoulder_slope_percent: string;
+  side_slope_h_to_v: string;
   thickness_in: string;
 };
 
 type SegmentResult = {
   name: string;
   length_ft: number;
-  width_ft: number;
+  pavement_width_ft: number;
+  shoulder_width_ft: number;
+  shoulder_slope_percent: number;
+  side_slope_h_to_v: number;
   thickness_in: number;
+  keyout_run_per_side_ft: number;
+  triangle_area_per_side_sq_ft: number;
+  equivalent_width_per_side_ft: number;
+  equivalent_width_both_sides_ft: number;
+  effective_base_width_ft: number;
+  cross_section_area_sq_ft: number;
   cubic_feet: number;
   cubic_yards: number;
   base_tons: number;
@@ -29,7 +41,7 @@ type CalculationResult = {
     waste_tons: number;
     order_tons: number;
   };
-  assumptions: { tons_per_cubic_yard: number; waste_percent: number; thickness_basis: string; units: string };
+  assumptions: { tons_per_cubic_yard: number; waste_percent: number; thickness_basis: string; shoulder_count: number; keyout_basis: string; units: string };
   engine_version: string;
 };
 
@@ -41,7 +53,7 @@ const DEFAULT_WASTE = "0";
 const AUTO_CALC_DELAY_MS = 350;
 
 function blankSegment(id: number): SegmentInput {
-  return { id, name: "", length_ft: "", width_ft: "", thickness_in: "" };
+  return { id, name: "", length_ft: "", pavement_width_ft: "", shoulder_width_ft: "", shoulder_slope_percent: "", side_slope_h_to_v: "", thickness_in: "" };
 }
 
 function positiveNumber(value: string, label: string) {
@@ -49,6 +61,14 @@ function positiveNumber(value: string, label: string) {
   const number = Number(value);
   if (!Number.isFinite(number)) return `${label} must be a finite number.`;
   if (number <= 0) return `${label} must be greater than zero.`;
+  return "";
+}
+
+function nonnegativeNumber(value: string, label: string) {
+  if (!value.trim()) return `Enter ${label.toLowerCase()}.`;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return `${label} must be a finite number.`;
+  if (number < 0) return `${label} must be zero or greater.`;
   return "";
 }
 
@@ -67,13 +87,25 @@ function validate(segments: SegmentInput[], density: string, waste: string): Err
   segments.forEach((segment) => {
     const fields: Array<[keyof SegmentInput, string]> = [
       ["length_ft", "Length"],
-      ["width_ft", "Base width"],
+      ["pavement_width_ft", "Pavement width"],
+      ["side_slope_h_to_v", "Side slope"],
       ["thickness_in", "Compacted thickness"],
     ];
     fields.forEach(([field, label]) => {
       const message = positiveNumber(String(segment[field]), label);
       if (message) errors[`${segment.id}.${field}`] = message;
     });
+    const shoulderWidthError = nonnegativeNumber(segment.shoulder_width_ft, "Shoulder width");
+    if (shoulderWidthError) errors[`${segment.id}.shoulder_width_ft`] = shoulderWidthError;
+    const shoulderSlopeError = nonnegativeNumber(segment.shoulder_slope_percent, "Shoulder slope");
+    if (shoulderSlopeError) errors[`${segment.id}.shoulder_slope_percent`] = shoulderSlopeError;
+    if (!shoulderSlopeError && !errors[`${segment.id}.side_slope_h_to_v`]) {
+      const shoulderSlope = Number(segment.shoulder_slope_percent) / 100;
+      const sideSlope = 1 / Number(segment.side_slope_h_to_v);
+      if (sideSlope <= shoulderSlope) {
+        errors[`${segment.id}.side_slope_h_to_v`] = "Side slope must be steeper than the shoulder slope so the keyout closes.";
+      }
+    }
   });
   return errors;
 }
@@ -132,10 +164,13 @@ export default function CrushedStoneBaseCalculator() {
     if (!workerRef.current || runtime !== "ready") return Promise.reject(new Error("Calculation engine is not ready."));
     const id = requestId.current++;
     const payload = {
-      segments: segments.map(({ name, length_ft, width_ft, thickness_in }) => ({
+      segments: segments.map(({ name, length_ft, pavement_width_ft, shoulder_width_ft, shoulder_slope_percent, side_slope_h_to_v, thickness_in }) => ({
         name,
         length_ft: Number(length_ft),
-        width_ft: Number(width_ft),
+        pavement_width_ft: Number(pavement_width_ft),
+        shoulder_width_ft: Number(shoulder_width_ft),
+        shoulder_slope_percent: Number(shoulder_slope_percent),
+        side_slope_h_to_v: Number(side_slope_h_to_v),
         thickness_in: Number(thickness_in),
       })),
       tons_per_cubic_yard: Number(density),
@@ -190,7 +225,7 @@ export default function CrushedStoneBaseCalculator() {
         <div>
           <p className="marketing-eyebrow"><span /> Free construction quantity tool</p>
           <h1>Crushed Stone Base<br /><em>Tonnage Calculator</em></h1>
-          <p>Build a roadway quantity from multiple uniform segments. The calculation stays in your browser and uses compacted plan dimensions.</p>
+          <p>Build a roadway quantity from pavement width, two matching shoulders, and the outside base keyout triangles. The calculation stays in your browser.</p>
         </div>
         <div className={`stone-runtime ${runtime}`} role="status" aria-live="polite"><i />{runtimeMessage}</div>
       </header>
@@ -205,7 +240,10 @@ export default function CrushedStoneBaseCalculator() {
                 <label className="stone-field full"><span>Name <small>Optional</small></span><input value={segment.name} onChange={(event) => updateSegment(segment.id, "name", event.target.value)} placeholder={`Roadway segment ${index + 1}`} /></label>
                 {([
                   ["length_ft", "Length", "ft"],
-                  ["width_ft", "Base width", "ft"],
+                  ["pavement_width_ft", "Pavement width (EOP to EOP)", "ft"],
+                  ["shoulder_width_ft", "Shoulder width (each side)", "ft"],
+                  ["shoulder_slope_percent", "Shoulder slope (down)", "%"],
+                  ["side_slope_h_to_v", "Side slope", "H:1V"],
                   ["thickness_in", "Compacted thickness", "in"],
                 ] as const).map(([field, label, unit]) => {
                   const key = `${segment.id}.${field}`;
@@ -228,7 +266,7 @@ export default function CrushedStoneBaseCalculator() {
           <div className="stone-section-heading"><div><span>03</span><h2 id="quantity-results">Quantity summary</h2></div><small>US customary</small></div>
           {serviceError && <div className="stone-error" role="alert">{serviceError}</div>}
           {!isValid || !result ? (
-            <div className="stone-empty"><div className="stone-layer-icon"><i /><i /><i /></div><h3>{runtime === "error" ? "Engine unavailable" : "Enter segment dimensions"}</h3><p>Valid length, width, and compacted thickness values will produce the quantity automatically.</p></div>
+            <div className="stone-empty"><div className="stone-layer-icon"><i /><i /><i /></div><h3>{runtime === "error" ? "Engine unavailable" : "Enter segment geometry"}</h3><p>Enter the full pavement width, one shoulder width used on both sides, the shoulder and side slopes, and compacted thickness.</p></div>
           ) : (
             <>
               <div className="stone-primary-result"><span>Order quantity</span><strong>{format(result.totals.order_tons)}</strong><b>US short tons</b></div>
@@ -238,7 +276,7 @@ export default function CrushedStoneBaseCalculator() {
                 <article><span>Base quantity</span><strong>{format(result.totals.base_tons)}</strong><small>tons before waste</small></article>
                 <article><span>Waste allowance</span><strong>{format(result.totals.waste_tons)}</strong><small>tons at {format(result.assumptions.waste_percent)}%</small></article>
               </div>
-              <div className="stone-breakdown"><h3>Segment breakdown</h3>{result.segments.map((segment, index) => <article key={index}><div><strong>{segment.name || `Segment ${index + 1}`}</strong><span>{format(segment.length_ft)} ft × {format(segment.width_ft)} ft × {format(segment.thickness_in)} in</span></div><div><strong>{format(segment.base_tons)} tons</strong><span>{format(segment.cubic_yards)} CY</span></div></article>)}</div>
+              <div className="stone-breakdown"><h3>Segment breakdown</h3>{result.segments.map((segment, index) => <article key={index}><div><strong>{segment.name || `Segment ${index + 1}`}</strong><span>{format(segment.length_ft)} ft long · {format(segment.pavement_width_ft)} ft pavement · 2 × {format(segment.shoulder_width_ft)} ft shoulders</span><span>Triangle each side: {format(segment.keyout_run_per_side_ft)} ft run · {format(segment.triangle_area_per_side_sq_ft)} SF</span><span className="stone-keyout-value"><b>Equivalent keyout width</b>{format(segment.equivalent_width_per_side_ft)} ft per side · {format(segment.equivalent_width_both_sides_ft)} ft total for both sides</span><span>Effective base width: {format(segment.effective_base_width_ft)} ft</span></div><div><strong>{format(segment.base_tons)} tons</strong><span>{format(segment.cubic_yards)} CY</span></div></article>)}</div>
               <div className="stone-provenance"><span>Engine v{result.engine_version}</span><span>{format(result.assumptions.tons_per_cubic_yard)} tons/CY</span><span>{result.assumptions.thickness_basis}</span></div>
             </>
           )}
@@ -246,8 +284,8 @@ export default function CrushedStoneBaseCalculator() {
       </div>
 
       <section className="stone-method">
-        <div><p className="marketing-eyebrow"><span /> Transparent method</p><h2>Every quantity stays visible.</h2><p>Each segment is calculated independently, then combined before the waste allowance is applied.</p></div>
-        <ol><li><span>01</span><p><strong>Cubic feet</strong>Length × width × compacted thickness ÷ 12</p></li><li><span>02</span><p><strong>Cubic yards</strong>Cubic feet ÷ 27</p></li><li><span>03</span><p><strong>Order tons</strong>Cubic yards × tons/CY × (1 + waste %)</p></li></ol>
+        <div><p className="marketing-eyebrow"><span /> Transparent method</p><h2>Every keyout stays visible.</h2><p>The base bottom follows the pavement and shoulder surfaces. Beyond each of the two shoulders, the base tapers to the side slope as an equal triangle.</p></div>
+        <ol><li><span>01</span><p><strong>Keyout run per side</strong>Thickness in feet ÷ (1 ÷ side slope H:V − shoulder slope)</p></li><li><span>02</span><p><strong>Equivalent width per side</strong>Triangle area ÷ thickness = keyout run ÷ 2</p></li><li><span>03</span><p><strong>Effective base width</strong>Pavement width + 2 × shoulder width + 2 × equivalent keyout width</p></li><li><span>04</span><p><strong>Order tons</strong>Length × effective width × thickness ÷ 27 × tons/CY × (1 + waste %)</p></li></ol>
       </section>
       <div className="engineering-note"><span>ESTIMATING AID</span><p>The responsible project professional must verify dimensions, material properties, construction allowances, quantities, and purchasing requirements.</p></div>
     </main>
