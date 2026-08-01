@@ -198,7 +198,7 @@ export default function CalculatorApp() {
         }
       }
     };
-    worker.postMessage({ operation: "initialize" });
+    worker.postMessage({ calculator: "superelevation", operation: "initialize" });
   }, []);
 
   useEffect(() => {
@@ -225,7 +225,7 @@ export default function CalculatorApp() {
     const id = ++requestId.current;
     return new Promise<any>((resolve, reject) => {
       pendingRef.current.set(id, { resolve, reject });
-      workerRef.current!.postMessage({ id, operation, payload: { ...payload, entitlement } });
+      workerRef.current!.postMessage({ id, calculator: "superelevation", operation, payload: { ...payload, entitlement } });
     });
   }, [runtime, entitlement]);
 
