@@ -11,7 +11,7 @@ export function getStripe() {
     appInfo: {
       name: "Superelevation Calculator",
       version: releaseInfo.application_version,
-      url: "https://github.com/colewinstead/Super_Elevation_Calculator",
+      url: "https://github.com/colewinstead/VeriCivil",
     },
   });
 }

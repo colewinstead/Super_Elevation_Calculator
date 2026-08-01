@@ -1,7 +1,7 @@
 # OpenRoads Designer Add-In Research and Handoff
 
 **Project:** Superelevation Calculator  
-**Repository:** <https://github.com/colewinstead/Super_Elevation_Calculator>  
+**Repository:** <https://github.com/colewinstead/VeriCivil>
 **Research date:** July 13, 2026  
 **Current assumption:** The target product is believed to be OpenRoads Designer 2025, but the complete installed version/build has not yet been confirmed.
 
@@ -78,7 +78,7 @@ The add-in is another interface to the same engineering engine, so keeping both 
 Suggested structure:
 
 ```text
-Super_Elevation_Calculator/
+VeriCivil/
 |-- Super.py
 |-- super_app.py
 |-- tests/
@@ -354,9 +354,9 @@ Only after this milestone should the project commit to the full native writer de
 
 ## Current machine status at handoff
 
-- Repository location: `C:\Python Projects\Super_Elevation_Calculator`
+- Repository location: `C:\Python Projects\VeriCivil`
 - Git branch: `main`
-- Remote: `https://github.com/colewinstead/Super_Elevation_Calculator`
+- Remote: `https://github.com/colewinstead/VeriCivil`
 - The repository was clean and synchronized with `origin/main` before this document was added.
 - No OpenRoads Designer or matching ORD SDK installation was detected on this computer during the research.
 - The user believes the eventual target is ORD 2025, but the full version/build remains unknown.

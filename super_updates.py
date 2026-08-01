@@ -17,7 +17,7 @@ from app_info import APP_NAME, APP_VERSION
 import app_logging
 
 
-REPOSITORY = "colewinstead/Super_Elevation_Calculator"
+REPOSITORY = "colewinstead/VeriCivil"
 LATEST_RELEASE_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 RELEASE_URL_PREFIX = f"https://github.com/{REPOSITORY}/releases/"
 REQUEST_TIMEOUT_SECONDS = 5.0
