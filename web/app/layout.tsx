@@ -23,20 +23,20 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(origin),
     title: {
-      default: "Superelevation Calculator | Roadway Design Toolkit",
-      template: "%s | Superelevation Calculator",
+      default: "VeriCivil | Roadway Calculation Toolkit",
+      template: "%s | VeriCivil",
     },
-    description: "Browser-first roadway superelevation calculations with local project processing, Free manual curves, and planned Pro engineering workflows.",
+    description: "Focused roadway design and construction calculators with visible assumptions, local processing, and tested Python engines.",
     openGraph: {
       type: "website",
-      title: "Superelevation Calculator",
-      description: "Professional superelevation, local by design.",
-      images: [{ url: new URL("/og.png", origin).toString(), width: 1200, height: 630, alt: "Superelevation Calculator roadway design toolkit" }],
+      title: "VeriCivil",
+      description: "Roadway calculations you can verify.",
+      images: [{ url: new URL("/og.png", origin).toString(), width: 1200, height: 630, alt: "VeriCivil roadway calculation toolkit" }],
     },
     twitter: {
       card: "summary_large_image",
-      title: "Superelevation Calculator",
-      description: "Professional superelevation, local by design.",
+      title: "VeriCivil",
+      description: "Roadway calculations you can verify.",
       images: [new URL("/og.png", origin).toString()],
     },
   };

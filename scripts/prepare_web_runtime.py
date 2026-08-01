@@ -16,32 +16,24 @@ sys.path.insert(0, str(ROOT))
 from commercial_entitlements import commercial_manifest  # noqa: E402
 from criteria_info import criteria_metadata, criteria_profiles  # noqa: E402
 from app_info import APP_VERSION, CALCULATION_ENGINE_VERSION  # noqa: E402
-
-MODULES = [
-    "Super.py",
-    "app_info.py",
-    "commercial_entitlements.py",
-    "criteria_info.py",
-    "tdot_criteria.py",
-    "super_batch.py",
-    "super_dxf.py",
-    "super_exports.py",
-    "super_landxml.py",
-    "super_lane.py",
-    "super_pdf.py",
-    "super_project.py",
-    "super_qa.py",
-    "super_service.py",
-    "super_transition.py",
-    "super_ui.py",
-]
+from calculators.catalog import browser_runtime_manifest, calculator_catalog  # noqa: E402
 
 
 def main() -> None:
+    runtime_manifest = browser_runtime_manifest()
+    modules = sorted(
+        {
+            module
+            for bundle in runtime_manifest["calculators"].values()
+            for module in bundle["modules"]
+        }
+    )
     TARGET.mkdir(parents=True, exist_ok=True)
-    for name in MODULES:
-        shutil.copy2(ROOT / name, TARGET / name)
-    (TARGET / "manifest.json").write_text(json.dumps({"modules": MODULES}, indent=2) + "\n", encoding="utf-8")
+    for name in modules:
+        destination = TARGET / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / name, destination)
+    (TARGET / "manifest.json").write_text(json.dumps(runtime_manifest, indent=2) + "\n", encoding="utf-8")
     GENERATED.mkdir(parents=True, exist_ok=True)
     supported_profiles = []
     for profile in criteria_profiles():
@@ -69,7 +61,10 @@ def main() -> None:
         ) + "\n",
         encoding="utf-8",
     )
-    print(f"Staged {len(MODULES)} shared Python modules for the browser runtime.")
+    (GENERATED / "calculators.json").write_text(
+        json.dumps(calculator_catalog(), indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"Staged {len(modules)} shared Python modules across {len(runtime_manifest['calculators'])} calculators.")
 
 
 if __name__ == "__main__":

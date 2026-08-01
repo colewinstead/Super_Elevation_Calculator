@@ -1,0 +1,26 @@
+[
+  {
+    "id": "superelevation",
+    "slug": "superelevation",
+    "title": "Superelevation Calculator",
+    "short_title": "Superelevation",
+    "description": "Calculate roadway superelevation transitions, review lane slopes, and create traceable engineering exports.",
+    "category": "Roadway Geometry",
+    "status": "available",
+    "access": "Free + Pro",
+    "engine_version": "1.2.4",
+    "route": "/calculators/superelevation"
+  },
+  {
+    "id": "crushed_stone_base",
+    "slug": "crushed-stone-base",
+    "title": "Crushed Stone Base Tonnage Calculator",
+    "short_title": "Crushed Stone Base",
+    "description": "Estimate compacted roadway base volume and order tonnage across multiple construction segments.",
+    "category": "Construction Quantities",
+    "status": "available",
+    "access": "Free",
+    "engine_version": "1.0.0",
+    "route": "/calculators/crushed-stone-base"
+  }
+]

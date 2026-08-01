@@ -12,7 +12,10 @@ await micropip.install(["reportlab==4.4.7", "ezdxf==1.4.4"])
 
 pyodide.FS.mkdirTree("/app");
 const manifest = JSON.parse(await readFile(new URL("manifest.json", runtimeRoot), "utf8"));
-for (const moduleName of manifest.modules) {
+const allModules = [...new Set(Object.values(manifest.calculators).flatMap((bundle) => bundle.modules))];
+for (const moduleName of allModules) {
+  const slash = moduleName.lastIndexOf("/");
+  if (slash >= 0) pyodide.FS.mkdirTree(`/app/${moduleName.slice(0, slash)}`);
   pyodide.FS.writeFile(`/app/${moduleName}`, await readFile(new URL(moduleName, runtimeRoot), "utf8"), { encoding: "utf8" });
 }
 
@@ -296,4 +299,32 @@ const dxf = dxfProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: 
 dxfProxy.destroy();
 assert.match(new TextDecoder().decode(dxf.content), /SECTION/);
 
-console.log("Pyodide calculation, analysis, and export parity passed.");
+assert.deepEqual(manifest.calculators.crushed_stone_base.pyodide_packages, []);
+assert.deepEqual(manifest.calculators.crushed_stone_base.micropip_packages, []);
+const stonePyodide = await loadPyodide();
+stonePyodide.FS.mkdirTree("/app");
+for (const moduleName of manifest.calculators.crushed_stone_base.modules) {
+  const slash = moduleName.lastIndexOf("/");
+  if (slash >= 0) stonePyodide.FS.mkdirTree(`/app/${moduleName.slice(0, slash)}`);
+  stonePyodide.FS.writeFile(`/app/${moduleName}`, await readFile(new URL(moduleName, runtimeRoot), "utf8"), { encoding: "utf8" });
+}
+await stonePyodide.runPythonAsync(`
+import sys
+sys.path.insert(0, "/app")
+import vericivil_service
+`);
+stonePyodide.globals.set("stone_payload", JSON.stringify({
+  segments: [{ name: "Mainline", length_ft: 100, width_ft: 20, thickness_in: 6 }],
+  tons_per_cubic_yard: 1.6875,
+  waste_percent: 0,
+}));
+const stoneProxy = stonePyodide.runPython(
+  `vericivil_service.dispatch_safe("crushed_stone_base", "calculate", stone_payload)`,
+);
+const stone = stoneProxy.toJs({ dict_converter: Object.fromEntries, create_proxies: false });
+stoneProxy.destroy();
+assert.equal(stone.ok, true);
+assert.equal(stone.result.totals.cubic_feet, 1000);
+assert.equal(stone.result.totals.base_tons, 62.5);
+
+console.log("Pyodide superelevation and crushed stone base parity passed.");

@@ -16,24 +16,18 @@ async function render(path = "/") {
   );
 }
 
-test("renders the product homepage without starting the calculation runtime", async () => {
+test("renders the VeriCivil calculator hub without starting a calculation runtime", async () => {
   const response = await render("/");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /Superelevation Calculator \| Roadway Design Toolkit/i);
-  assert.match(html, /Professional superelevation/i);
-  assert.match(html, /DOTs supported/i);
-  assert.match(html, /Mississippi Department of Transportation/i);
-  assert.match(html, /Tennessee Department of Transportation/i);
-  assert.match(html, /Free, Pro, and Team capability comparison/i);
-  assert.match(html, /Book a Team pilot/i);
-  assert.match(html, /\$29\/month/i);
-  assert.match(html, /No engineering-file uploads/i);
+  assert.match(html, /VeriCivil \| Roadway Calculation Toolkit/i);
+  assert.match(html, /Roadway calculations/i);
+  assert.match(html, /you can verify/i);
+  assert.match(html, /Crushed Stone Base Tonnage Calculator/i);
+  assert.match(html, /Superelevation Calculator/i);
+  assert.match(html, /Manage Superelevation Pro/i);
   assert.match(html, /licensed professional responsible for the project/i);
   assert.doesNotMatch(html, /<form/i);
-  assert.match(html, /Desktop editions are coming soon/i);
-  assert.match(html, /Coming soon/i);
-  assert.doesNotMatch(html, /Download EXE|SuperelevationCalculator-macOS-Apple-Silicon\.dmg|SuperelevationCalculator-macOS-Intel\.dmg/i);
   assert.match(html, /http:\/\/localhost\/og\.png/i);
   await access(new URL("../public/og.png", import.meta.url));
   assert.match(html, /Browser UI/i);
@@ -51,13 +45,38 @@ test("renders the product homepage without starting the calculation runtime", as
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
-test("renders the browser-only calculator shell on its dedicated route", async () => {
-  const response = await render("/calculator");
+test("renders the calculator directory and crushed stone base workspace", async () => {
+  const [directoryResponse, stoneResponse] = await Promise.all([
+    render("/calculators"),
+    render("/calculators/crushed-stone-base"),
+  ]);
+  assert.equal(directoryResponse.status, 200);
+  assert.equal(stoneResponse.status, 200);
+  const [directory, stone] = await Promise.all([directoryResponse.text(), stoneResponse.text()]);
+  assert.match(directory, /Focused tools for/i);
+  assert.match(directory, /Superelevation Calculator/i);
+  assert.match(directory, /Crushed Stone Base Tonnage Calculator/i);
+  assert.match(stone, /Crushed Stone Base Tonnage Calculator \| VeriCivil/i);
+  assert.match(stone, /Roadway segments/i);
+  assert.match(stone, /1\.6875/i);
+  assert.match(stone, /Confirm before ordering/i);
+  assert.match(stone, /Add segment/i);
+  assert.match(stone, /US customary/i);
+  const source = await readFile(new URL("../app/CrushedStoneBaseCalculator.tsx", import.meta.url), "utf8");
+  assert.match(source, /AUTO_CALC_DELAY_MS = 350/);
+  assert.match(source, /calculator: "crushed_stone_base"/);
+  assert.match(source, /aria-invalid/);
+  assert.match(source, /aria-live="polite"/);
+  assert.doesNotMatch(source, /localStorage|showSaveFilePicker|truckload|metric toggle/i);
+});
+
+test("renders superelevation at its permanent route and preserves compatibility query parameters", async () => {
+  const response = await render("/calculators/superelevation");
   assert.equal(response.status, 200);
   const html = await response.text();
   const source = await readFile(new URL("../app/CalculatorApp.tsx", import.meta.url), "utf8");
   const upgradeSource = await readFile(new URL("../app/UpgradeNotice.tsx", import.meta.url), "utf8");
-  assert.match(html, /<title>Browser Calculator \| Superelevation Calculator<\/title>/i);
+  assert.match(html, /<title>Superelevation Calculator \| VeriCivil<\/title>/i);
   assert.match(html, /CalculatorApp-[^"']+\.js/i);
   assert.match(source, /Private browser engine/i);
   assert.match(source, /Select LandXML/i);
@@ -84,6 +103,12 @@ test("renders the browser-only calculator shell on its dedicated route", async (
   assert.match(source, /preserves the LandXML XY coordinates without reprojection/i);
   assert.doesNotMatch(source, /Destination CRS|targetCrs|coordinate_config/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
+  const compatibilityResponse = await render("/calculator?entitlement=pro&sample=1");
+  assert.ok([307, 308].includes(compatibilityResponse.status));
+  assert.equal(
+    compatibilityResponse.headers.get("location"),
+    "http://localhost/calculators/superelevation?entitlement=pro&sample=1",
+  );
 });
 
 test("renders public legal pages and branded signed-out account access", async () => {
@@ -213,9 +238,13 @@ test("ships the Python worker and shared runtime manifest", async () => {
     readFile(new URL("../public/python/manifest.json", import.meta.url), "utf8"),
   ]);
   assert.match(worker, /PYODIDE_VERSION = "0\.29\.4"/);
-  assert.match(worker, /reportlab==4\.4\.7/);
-  assert.match(worker, /ezdxf==1\.4\.4/);
-  assert.match(worker, /super_service\.dispatch_safe/);
+  assert.match(worker, /bundle\.pyodide_packages/);
+  assert.match(worker, /bundle\.micropip_packages/);
+  assert.match(worker, /vericivil_service\.dispatch_safe/);
+  assert.match(manifest, /crushed_stone_base/);
+  assert.match(manifest, /reportlab==4\.4\.7/);
+  assert.match(manifest, /ezdxf==1\.4\.4/);
+  assert.match(manifest, /"pyodide_packages": \[\]/);
   assert.match(manifest, /super_service\.py/);
   assert.match(manifest, /commercial_entitlements\.py/);
   await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
