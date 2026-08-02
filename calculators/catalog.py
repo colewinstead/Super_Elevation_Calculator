@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any
 
 from app_info import CALCULATION_ENGINE_VERSION
+from calculators.crushed_stone_base.engine import ENGINE_VERSION as STONE_ENGINE_VERSION
 
 
 _SUPER_MODULES = [
@@ -64,7 +65,7 @@ CALCULATORS: tuple[dict[str, Any], ...] = (
         "category": "Construction Quantities",
         "status": "available",
         "access": "Free",
-        "engine_version": "1.0.0",
+        "engine_version": STONE_ENGINE_VERSION,
         "route": "/calculators/crushed-stone-base",
         "runtime": {
             "modules": _STONE_MODULES,

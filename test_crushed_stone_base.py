@@ -2,7 +2,7 @@ import math
 import unittest
 
 from calculators.catalog import browser_runtime_manifest, calculator_catalog
-from calculators.crushed_stone_base.engine import calculate
+from calculators.crushed_stone_base.engine import ENGINE_VERSION, calculate
 from calculators.crushed_stone_base.service import dispatch_safe
 
 
@@ -86,6 +86,7 @@ class CrushedStoneBaseTests(unittest.TestCase):
         runtime = browser_runtime_manifest()["calculators"]
         self.assertEqual(catalog["crushed_stone_base"]["route"], "/calculators/crushed-stone-base")
         self.assertEqual(catalog["crushed_stone_base"]["access"], "Free")
+        self.assertEqual(catalog["crushed_stone_base"]["engine_version"], ENGINE_VERSION)
         self.assertEqual(runtime["crushed_stone_base"]["pyodide_packages"], [])
         self.assertEqual(runtime["crushed_stone_base"]["micropip_packages"], [])
         self.assertIn("super_service.py", runtime["superelevation"]["modules"])
