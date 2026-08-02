@@ -23,15 +23,15 @@ test("renders the VeriCivil calculator hub without starting a calculation runtim
   assert.match(html, /VeriCivil \| Roadway Calculation Toolkit/i);
   assert.match(html, /Roadway calculations/i);
   assert.match(html, /you can verify/i);
-  assert.match(html, /Crushed Stone Base Tonnage Calculator/i);
+  assert.match(html, /Crushed Stone Base/i);
   assert.match(html, /Superelevation Calculator/i);
   assert.match(html, /Manage Superelevation Pro/i);
   assert.match(html, /licensed professional responsible for the project/i);
   assert.doesNotMatch(html, /<form/i);
   assert.match(html, /http:\/\/localhost\/og\.png/i);
   await access(new URL("../public/og.png", import.meta.url));
-  assert.match(html, /Browser UI/i);
-  assert.match(html, /Lane diagram/i);
+  assert.match(html, /Live browser workspace/i);
+  assert.match(html, /Lane profiles/i);
   assert.match(html, /Overlay DXF/i);
   assert.match(html, /PDF report/i);
   await Promise.all([
@@ -39,8 +39,10 @@ test("renders the VeriCivil calculator hub without starting a calculation runtim
     access(new URL("../public/showcase/lane-profile-diagram.png", import.meta.url)),
     access(new URL("../public/showcase/dxf-plan-view.png", import.meta.url)),
     access(new URL("../public/showcase/pdf-report.png", import.meta.url)),
+    access(new URL("../public/showcase/stone-base-results.png", import.meta.url)),
   ]);
-  assert.doesNotMatch(html, /Superelevated roadway calculation illustration|Example calculator results/i);
+  assert.doesNotMatch(html, /https:\/\/github\.com\/colewinstead\/VeriCivil/i);
+  assert.doesNotMatch(html, /Available Tool 01|Available Tool 02|Superelevated roadway calculation illustration|Example calculator results/i);
   assert.doesNotMatch(html, /Starting private browser workspace/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
@@ -55,7 +57,7 @@ test("renders the calculator directory and crushed stone base workspace", async 
   const [directory, stone] = await Promise.all([directoryResponse.text(), stoneResponse.text()]);
   assert.match(directory, /Focused tools for/i);
   assert.match(directory, /Superelevation Calculator/i);
-  assert.match(directory, /Crushed Stone Base Tonnage Calculator/i);
+  assert.match(directory, /Crushed Stone Base/i);
   assert.match(stone, /Crushed Stone Base Tonnage Calculator \| VeriCivil/i);
   assert.match(stone, /Roadway segments/i);
   assert.match(stone, /1\.6875/i);

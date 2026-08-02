@@ -68,10 +68,10 @@ export default function OutputShowcase() {
 
   return (
     <div className="output-showcase" aria-label="Real Superelevation Calculator outputs">
-      <a className="output-card output-card-ui" href="/calculator">
+      <a className="output-card output-card-ui" href="/calculators/superelevation">
         <figure>
           <div className="output-image output-image-ui">
-            <img src="/showcase/calculator-ui.png" alt="Browser calculator showing the SR 82 project, curve inputs, calculated results, lane diagram, and export controls" width="1314" height="1649" />
+            <img src="/showcase/calculator-ui.png" alt="Browser calculator showing the SR 82 project, curve inputs, calculated results, lane diagram, and export controls" width="1425" height="1626" />
           </div>
           <figcaption><span>Browser UI</span><strong>Calculate and review</strong><small>Open the live workspace ↗</small></figcaption>
         </figure>
