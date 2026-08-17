@@ -17,6 +17,7 @@ import {
 } from "./entitlements";
 import SuperelevationAnalysis from "./SuperelevationAnalysis";
 import UpgradeNotice from "./UpgradeNotice";
+import { trackCalculatorEvent } from "@/lib/analytics/client";
 
 type Dict = Record<string, any>;
 type RuntimeState = "loading" | "ready" | "error";
@@ -132,6 +133,8 @@ export default function CalculatorApp() {
   const requestId = useRef(0);
   const calculationSequence = useRef(0);
   const loadedCurveCalculation = useRef<{ key: string; request: number } | null>(null);
+  const lastTrackedCalculation = useRef("");
+  const lastTrackedFailure = useRef("");
   const [runtime, setRuntime] = useState<RuntimeState>("loading");
   const [runtimeMessage, setRuntimeMessage] = useState("Starting private browser workspace…");
   const [progress, setProgress] = useState(4);
@@ -160,6 +163,7 @@ export default function CalculatorApp() {
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [dirty, setDirty] = useState(false);
+  useEffect(() => trackCalculatorEvent("superelevation", "calculator_opened"), []);
   const startWorker = useCallback(() => {
     workerRef.current?.terminate();
     pendingRef.current.forEach(({ reject }) => reject(new Error("Browser workspace restarted.")));
@@ -297,6 +301,17 @@ export default function CalculatorApp() {
       setCalculation(result);
       setLookupResult(null);
       setDirty(true);
+      const key = calculationInputKey(inputs);
+      if (lastTrackedCalculation.current !== key) {
+        lastTrackedCalculation.current = key;
+        trackCalculatorEvent("superelevation", "calculation_completed");
+      }
+    } else if (!result) {
+      const key = calculationInputKey(inputs);
+      if (lastTrackedFailure.current !== key) {
+        lastTrackedFailure.current = key;
+        trackCalculatorEvent("superelevation", "calculation_failed", "runtime");
+      }
     }
   };
 
@@ -327,9 +342,17 @@ export default function CalculatorApp() {
         if (sequence !== calculationSequence.current) return;
         setCalculation(result);
         setLookupResult(null);
+        if (lastTrackedCalculation.current !== calculationKey) {
+          lastTrackedCalculation.current = calculationKey;
+          trackCalculatorEvent("superelevation", "calculation_completed");
+        }
       } catch (reason) {
         if (sequence === calculationSequence.current) {
           setError(reason instanceof Error ? reason.message : String(reason));
+          if (lastTrackedFailure.current !== calculationKey) {
+            lastTrackedFailure.current = calculationKey;
+            trackCalculatorEvent("superelevation", "calculation_failed", "runtime");
+          }
         }
       } finally {
         if (sequence === calculationSequence.current) setBusy("");
@@ -772,6 +795,7 @@ export default function CalculatorApp() {
       return { ...result, disposition };
     });
     if (!outcome) return;
+    trackCalculatorEvent("superelevation", "export_completed", extension);
     const action = outcome.disposition === "saved" ? "Saved" : "Downloaded";
     setNotice(outcome.warnings?.length ? `${action} with ${outcome.warnings.length} warning(s): ${outcome.warnings[0]}` : `${action} ${extension.toUpperCase()} export.`);
   };

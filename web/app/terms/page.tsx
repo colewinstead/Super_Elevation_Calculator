@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import LegalShell from "../LegalShell";
-import { LEGAL_EFFECTIVE_DATE } from "@/lib/billing/legal";
+import { TERMS_EFFECTIVE_DATE } from "@/lib/billing/legal";
 
 export const metadata: Metadata = { title: "Terms of Service" };
 
 export default function TermsPage() {
   return (
-    <LegalShell title="Terms of Service" effectiveDate={LEGAL_EFFECTIVE_DATE}>
+    <LegalShell title="Terms of Service" effectiveDate={TERMS_EFFECTIVE_DATE}>
       <p>These Terms govern the Superelevation Calculator website, browser application, paid features, documentation, and related services (the <strong>Service</strong>). The provider is the seller identified during checkout and on the customer&apos;s payment receipt (<strong>Provider</strong>). By accepting these Terms, creating a paid account, or using a paid feature, the customer agrees personally or for the organization it is authorized to bind.</p>
 
       <section><h2>1. Engineering aid and responsible professional</h2>

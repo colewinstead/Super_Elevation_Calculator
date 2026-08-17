@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { trackCalculatorEvent } from "@/lib/analytics/client";
 
 type SegmentInput = {
   id: number;
@@ -126,8 +127,13 @@ export default function CrushedStoneBaseCalculator() {
   const workerRef = useRef<Worker | null>(null);
   const requestId = useRef(1);
   const pending = useRef(new Map<number, { resolve(value: CalculationResult): void; reject(reason: Error): void }>());
+  const lastTrackedCalculation = useRef("");
+  const lastTrackedFailure = useRef("");
   const errors = useMemo(() => validate(segments, density, waste), [segments, density, waste]);
   const isValid = Object.keys(errors).length === 0;
+  const calculationSignature = useMemo(() => JSON.stringify([segments, density, waste]), [density, segments, waste]);
+
+  useEffect(() => trackCalculatorEvent("crushed_stone_base", "calculator_opened"), []);
 
   useEffect(() => {
     const worker = new Worker("/pyodide-worker.js");
@@ -190,18 +196,29 @@ export default function CrushedStoneBaseCalculator() {
     const timer = window.setTimeout(() => {
       setServiceError("");
       calculate()
-        .then((next) => { if (active) setResult(next); })
+        .then((next) => {
+          if (!active) return;
+          setResult(next);
+          if (lastTrackedCalculation.current !== calculationSignature) {
+            lastTrackedCalculation.current = calculationSignature;
+            trackCalculatorEvent("crushed_stone_base", "calculation_completed");
+          }
+        })
         .catch((reason) => {
           if (!active) return;
           setResult(null);
           setServiceError(reason instanceof Error ? reason.message : "Calculation failed.");
+          if (lastTrackedFailure.current !== calculationSignature) {
+            lastTrackedFailure.current = calculationSignature;
+            trackCalculatorEvent("crushed_stone_base", "calculation_failed", "runtime");
+          }
         });
     }, AUTO_CALC_DELAY_MS);
     return () => {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [calculate, isValid, runtime]);
+  }, [calculate, calculationSignature, isValid, runtime]);
 
   const updateSegment = (id: number, field: keyof SegmentInput, value: string) => {
     setServiceError("");
