@@ -210,6 +210,29 @@ test("protects complimentary Pro administration with a stable WorkOS allowlist",
   assert.match(accountClient, /isPro && account\.billing\.subscription_status/);
 });
 
+test("records bounded anonymous calculator usage for the protected admin dashboard", async () => {
+  const [events, tracker, store, analyticsRoute, adminRoute, adminClient, privacy] = await Promise.all([
+    readFile(new URL("../lib/analytics/events.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/analytics/client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/analytics/store.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/analytics/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/analytics/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/AdminAnalyticsClient.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/privacy/page.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(events, /ALLOWED_KEYS.*session_token.*calculator.*event.*detail/s);
+  assert.doesNotMatch(events, /project_name|station|radius|result/i);
+  assert.match(tracker, /sessionStorage/);
+  assert.match(tracker, /navigator\.doNotTrack === "1"/);
+  assert.match(store, /SHA-256/);
+  assert.match(store, /'-90 days'/);
+  assert.match(analyticsRoute, /requireSameOrigin/);
+  assert.match(adminRoute, /isProductAdmin/);
+  assert.match(adminClient, /Calculator usage/);
+  assert.match(adminClient, /No project names, engineering inputs/);
+  assert.match(privacy, /Privacy-preserving product analytics/);
+});
+
 test("payment activation is webhook-driven and does not grant from the success redirect", async () => {
   const [checkout, webhook, account, remoteEntitlement, signingSource, publicKey] = await Promise.all([
     readFile(new URL("../app/api/billing/checkout/route.ts", import.meta.url), "utf8"),

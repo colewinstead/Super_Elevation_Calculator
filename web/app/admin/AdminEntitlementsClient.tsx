@@ -1,6 +1,8 @@
 "use client";
 
 import { FormEvent, useCallback, useState } from "react";
+import type { AnalyticsReport } from "@/lib/analytics/store";
+import AdminAnalyticsClient from "./AdminAnalyticsClient";
 
 export type GrantRecord = {
   id: string;
@@ -34,9 +36,11 @@ function formatDate(value: number | string | null) {
 export default function AdminEntitlementsClient({
   initialGrants,
   initialPreauthorizations,
+  initialAnalytics,
 }: {
   initialGrants: GrantRecord[];
   initialPreauthorizations: PreauthorizationRecord[];
+  initialAnalytics: AnalyticsReport;
 }) {
   const [grants, setGrants] = useState<GrantRecord[]>(initialGrants);
   const [preauthorizations, setPreauthorizations] = useState<PreauthorizationRecord[]>(initialPreauthorizations);
@@ -80,6 +84,7 @@ export default function AdminEntitlementsClient({
 
   return (
     <div className="admin-grid">
+      <AdminAnalyticsClient initialReport={initialAnalytics} />
       <section className="admin-card">
         <h2>Grant complimentary Pro</h2>
         <p>Enter the exact verified work email. If no account exists yet, Pro is preauthorized and activates after the first matching WorkOS sign-in.</p>
@@ -104,7 +109,7 @@ export default function AdminEntitlementsClient({
           ? <p className="admin-empty">No complimentary Pro grants have been recorded.</p>
           : <div className="admin-table-wrap"><table><thead><tr><th>Customer</th><th>Reason</th><th>Granted</th><th>Expiration</th><th>Status</th></tr></thead><tbody>{grants.map((grant) => <tr key={grant.id}><td><strong>{grant.displayName || grant.email}</strong><span>{grant.email}</span></td><td>{grant.reason}</td><td>{formatDate(grant.grantedAt)}</td><td>{formatDate(grant.expiresAt)}</td><td><span className={`admin-status ${grant.status}`}>{grant.status}</span></td></tr>)}</tbody></table></div>}
       </section>
-      <aside className="admin-local-note"><strong>Engineering data stays separate.</strong><span>This page stores account, access, and audit details only. It cannot view customer project files, LandXML, calculations, or exports.</span></aside>
+      <aside className="admin-local-note"><strong>Engineering data stays separate.</strong><span>This page shows anonymous usage counters and account-access records. It cannot view customer project files, LandXML, engineering inputs, calculated results, or export contents.</span></aside>
     </div>
   );
 }

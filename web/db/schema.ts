@@ -84,3 +84,18 @@ export const preauthorizedEntitlements = sqliteTable("preauthorized_entitlements
   index("preauthorized_entitlements_claimed_user_idx").on(table.claimedByUserId),
   index("preauthorized_entitlements_granted_at_idx").on(table.grantedAt),
 ]);
+
+export const analyticsEvents = sqliteTable("analytics_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  eventDay: text("event_day").notNull(),
+  sessionHash: text("session_hash").notNull(),
+  calculatorId: text("calculator_id").notNull(),
+  eventName: text("event_name").notNull(),
+  eventDetail: text("event_detail").notNull().default(""),
+  eventCount: integer("event_count").notNull().default(1),
+  firstSeenAt: text("first_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("analytics_events_session_event_idx").on(table.eventDay, table.sessionHash, table.calculatorId, table.eventName, table.eventDetail),
+  index("analytics_events_day_calculator_idx").on(table.eventDay, table.calculatorId),
+]);

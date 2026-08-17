@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import LegalShell from "../LegalShell";
-import { LEGAL_EFFECTIVE_DATE } from "@/lib/billing/legal";
+import { PRIVACY_EFFECTIVE_DATE } from "@/lib/billing/legal";
 
 export const metadata: Metadata = { title: "Privacy Policy" };
 
 export default function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" effectiveDate={LEGAL_EFFECTIVE_DATE}>
+    <LegalShell title="Privacy Policy" effectiveDate={PRIVACY_EFFECTIVE_DATE}>
       <p>This Policy explains how the operator identified during checkout and on a customer&apos;s payment receipt handles personal information for the Superelevation Calculator Service.</p>
 
       <section><h2>1. Engineering work stays local</h2>
@@ -16,13 +16,14 @@ export default function PrivacyPage() {
 
       <section><h2>2. Information collected</h2>
         <p>The Free calculator does not require a Superelevation Calculator account. Hosting and security providers may process limited connection data such as IP address, browser type, device type, requested pages, timestamps, and security events.</p>
+        <p>Privacy-preserving product analytics record when an anonymous browser session opens a calculator, completes or encounters an error during a calculation, or completes an export. These records identify only the calculator and action. They do not contain project names, engineering input values, stationing, coordinates, uploaded files, calculated results, IP addresses, or browser details.</p>
         <p>For paid accounts, Provider and WorkOS process name, email, authentication method, verification and session events, organization if supplied, internal account identifier, plan, entitlement status, named-seat information, acceptance versions, and account-security events. WorkOS provides branded identity verification and does not receive engineering files or calculations.</p>
         <p>Stripe directly processes payment-card and billing information. Provider receives transaction identifiers, plan, amount, currency, payment and renewal status, and limited billing contact information—not complete card numbers or security codes.</p>
         <p>Support information may include communications, application and engine versions, criteria metadata, operating environment, entitlement status, and redacted logs. Diagnostics do not automatically include project files or exports.</p>
       </section>
 
       <section><h2>3. Uses</h2>
-        <p>Information is used to provide and secure the Service, authenticate users, administer plans and seats, process payments and cancellation, provide support, maintain acceptance and audit records, prevent misuse, comply with law, and improve the Service without automatically collecting engineering files.</p>
+        <p>Information is used to provide and secure the Service, authenticate users, administer plans and seats, process payments and cancellation, provide support, maintain acceptance and audit records, measure anonymous calculator adoption, prevent misuse, comply with law, and improve the Service without automatically collecting engineering files or engineering input values.</p>
         <p>Engineering files and calculations are not sold or used for advertising.</p>
       </section>
 
@@ -32,7 +33,7 @@ export default function PrivacyPage() {
       </section>
 
       <section><h2>5. Retention and security</h2>
-        <p>Account, transaction, acceptance, entitlement, support, and security records are retained only as reasonably necessary to provide the Service, meet tax and accounting duties, resolve disputes, and protect accounts. Voluntarily supplied engineering attachments are removed after the support or legal need ends.</p>
+        <p>Anonymous calculator-usage counters are deleted after 90 days. Account, transaction, acceptance, entitlement, support, and security records are retained only as reasonably necessary to provide the Service, meet tax and accounting duties, resolve disputes, and protect accounts. Voluntarily supplied engineering attachments are removed after the support or legal need ends.</p>
         <p>Reasonable administrative and technical safeguards are used, including limited access, secure authentication, encrypted transmission, minimal collection, redacted diagnostics, and incident handling. No system is completely secure. Users remain responsible for devices, credentials, local files, and backups.</p>
       </section>
 
@@ -42,7 +43,7 @@ export default function PrivacyPage() {
       </section>
 
       <section><h2>7. Cookies and browser storage</h2>
-        <p>The Service may use technologies necessary for authentication, security, entitlement continuity, preferences, and operation. It does not use advertising cookies or cross-site behavioral tracking. This Policy will be updated before that practice changes.</p>
+        <p>The Service uses temporary browser session storage to create a random analytics identifier. The server stores only a daily one-way hash of that identifier, so activity is not linked across days. Browsers signaling Do Not Track do not send product-analytics events. The Service may also use technologies necessary for authentication, security, entitlement continuity, preferences, and operation. It does not use advertising cookies or cross-site behavioral tracking. This Policy will be updated before that practice changes.</p>
       </section>
 
       <section><h2>8. Children, international use, and third parties</h2>
